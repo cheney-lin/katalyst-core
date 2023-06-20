@@ -17,6 +17,7 @@ limitations under the License.
 package types
 
 import (
+	"k8s.io/apimachinery/pkg/api/resource"
 	"k8s.io/apimachinery/pkg/util/sets"
 	"k8s.io/kubelet/pkg/apis/resourceplugin/v1alpha1"
 
@@ -169,10 +170,26 @@ type RegionEntries map[string]*RegionInfo
 // PodSet stores container names keyed by pod uid
 type PodSet map[string]sets.String
 
-// InternalCalculationResult conveys minimal information to cpu server for composing
+// InternalCPUCalculationResult conveys minimal information to cpu server for composing
 // calculation result
-type InternalCalculationResult struct {
+type InternalCPUCalculationResult struct {
 	PoolEntries map[string]map[int]int // map[poolName][numaId]cpuSize
+}
+
+type ContainerMemoryAdvices struct {
+	PodUID        string
+	ContainerName string
+	Values        map[string]string
+}
+
+type ExtraMemoryAdvices struct {
+	CgroupPath string
+	Values     map[string]string
+}
+
+type InternalMemoryCalculationResult struct {
+	ContainerEntries []ContainerMemoryAdvices
+	ExtraEntries     []ExtraMemoryAdvices
 }
 
 // ResourceEssentials defines essential (const) variables, and those variables may be adjusted by KCC
@@ -251,4 +268,23 @@ type FirstOrderPIDParams struct {
 	AdjustmentLowerBound float64
 	DeadbandLowerPct     float64
 	DeadbandUpperPct     float64
+}
+
+type MemoryAdvisorPluginName string
+type MemoryPressureState int
+
+const (
+	MemoryPressureNoRisk    MemoryPressureState = 0
+	MemoryPressureTuneMemCg MemoryPressureState = 1
+	MemoryPressureDropCache MemoryPressureState = 2
+)
+
+type MemoryPressureCondition struct {
+	TargetReclaimed *resource.Quantity
+	State           MemoryPressureState
+}
+
+type MemoryPressureStatus struct {
+	NodeCondition  *MemoryPressureCondition
+	NUMAConditions map[int]*MemoryPressureCondition
 }
