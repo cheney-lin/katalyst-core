@@ -55,6 +55,14 @@ func (p *PolicyCanonical) Update() error {
 			return err
 		}
 
+		if p.regionType == types.QoSRegionTypeDedicatedNumaExclusive && !enableReclaim {
+			for _, _ = range p.bindingNumas.ToSliceInt() {
+				cpuEstimation += float64(p.metaServer.CPUsPerNuma())
+			}
+			containerCnt += len(containerSet)
+			continue
+		}
+
 		for containerName := range containerSet {
 			ci, ok := p.metaReader.GetContainerInfo(podUID, containerName)
 			if !ok || ci == nil {
@@ -85,8 +93,8 @@ func (p *PolicyCanonical) Update() error {
 
 	p.headroom = math.Max(p.ResourceUpperBound-cpuEstimation+p.ReservedForReclaim, 0)
 
-	klog.Infof("[qosaware-cpu-canonical] region %v cpuEstimation %v with reserve %v headroom %v #container %v",
-		p.regionName, cpuEstimation, p.ReservedForAllocate, p.headroom, containerCnt)
+	klog.Infof("[qosaware-cpu-canonical] region %v cpuEstimation %v with reservedForAllocate %v reservedForReclaim %v headroom %v #container %v",
+		p.regionName, cpuEstimation, p.ReservedForAllocate, p.ReservedForReclaim, p.headroom, containerCnt)
 
 	return nil
 }

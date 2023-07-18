@@ -98,6 +98,14 @@ func (p *PolicyCanonical) estimateCPUUsage() (float64, error) {
 			return 0, err
 		}
 
+		if p.regionType == types.QoSRegionTypeDedicatedNumaExclusive && !enableReclaim {
+			for _, _ = range p.bindingNumas.ToSliceInt() {
+				cpuEstimation += float64(p.metaServer.CPUsPerNuma())
+			}
+			containerCnt += len(containerSet)
+			continue
+		}
+
 		for containerName := range containerSet {
 			ci, ok := p.metaReader.GetContainerInfo(podUID, containerName)
 			if !ok || ci == nil {
