@@ -142,7 +142,11 @@ func (ra *memoryResourceAdvisor) sendAdvices() {
 	// send to server
 	result := types.InternalMemoryCalculationResult{TimeStamp: time.Now()}
 	for _, plugin := range ra.plugins {
-		advices := plugin.GetAdvices()
+		advices, err := plugin.GetAdvices()
+		if err != nil {
+			general.ErrorS(err, "GetAdvices failed")
+			continue
+		}
 		result.ContainerEntries = append(result.ContainerEntries, advices.ContainerEntries...)
 		result.ExtraEntries = append(result.ExtraEntries, advices.ExtraEntries...)
 	}

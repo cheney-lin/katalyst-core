@@ -31,7 +31,7 @@ type MemoryAdvisorPlugin interface {
 	// Reconcile triggers an episode of plugin update
 	Reconcile(status *types.MemoryPressureStatus) error
 	// GetAdvices return the advices
-	GetAdvices() types.InternalMemoryCalculationResult
+	GetAdvices() (*types.InternalMemoryCalculationResult, error)
 }
 
 type InitFunc func(conf *config.Configuration, extraConfig interface{}, metaReader metacache.MetaReader,

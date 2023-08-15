@@ -17,6 +17,7 @@ limitations under the License.
 package plugin
 
 import (
+	"fmt"
 	"strconv"
 	"sync"
 
@@ -43,6 +44,7 @@ type memoryGuard struct {
 	emitter                       metrics.MetricEmitter
 	reclaimRelativeRootCgroupPath string
 	reclaimMemoryLimit            *atomic.Int64
+	status                        types.PluginReconcileStatus
 }
 
 func NewMemoryGuard(conf *config.Configuration, extraConfig interface{}, metaReader metacache.MetaReader, metaServer *metaserver.MetaServer, emitter metrics.MetricEmitter) MemoryAdvisorPlugin {
@@ -52,32 +54,38 @@ func NewMemoryGuard(conf *config.Configuration, extraConfig interface{}, metaRea
 		emitter:                       emitter,
 		reclaimRelativeRootCgroupPath: conf.ReclaimRelativeRootCgroupPath,
 		reclaimMemoryLimit:            atomic.NewInt64(-1),
+		status:                        types.PluginReconcileUnknown,
 	}
 }
 
 func (mg *memoryGuard) Reconcile(status *types.MemoryPressureStatus) error {
 	memoryTotal, err := mg.metaServer.GetNodeMetric(consts.MetricMemTotalSystem)
 	if err != nil {
+		mg.status = types.PluginReconcileFailed
 		return err
 	}
 
 	memoryFree, err := mg.metaReader.GetNodeMetric(consts.MetricMemFreeSystem)
 	if err != nil {
+		mg.status = types.PluginReconcileFailed
 		return err
 	}
 
 	memoryCache, err := mg.metaReader.GetNodeMetric(consts.MetricMemPageCacheSystem)
 	if err != nil {
+		mg.status = types.PluginReconcileFailed
 		return err
 	}
 
 	memoryBuffer, err := mg.metaReader.GetNodeMetric(consts.MetricMemBufferSystem)
 	if err != nil {
+		mg.status = types.PluginReconcileFailed
 		return err
 	}
 
 	scaleFactor, err := mg.metaReader.GetNodeMetric(consts.MetricMemScaleFactorSystem)
 	if err != nil {
+		mg.status = types.PluginReconcileFailed
 		return err
 	}
 
@@ -88,6 +96,7 @@ func (mg *memoryGuard) Reconcile(status *types.MemoryPressureStatus) error {
 
 	reclaimGroupRss, err := mg.metaReader.GetCgroupMetric(mg.reclaimRelativeRootCgroupPath, consts.MetricMemRssCgroup)
 	if err != nil {
+		mg.status = types.PluginReconcileFailed
 		return err
 	}
 
@@ -101,11 +110,15 @@ func (mg *memoryGuard) Reconcile(status *types.MemoryPressureStatus) error {
 	)
 
 	mg.reclaimMemoryLimit.Store(int64(buffer + reclaimGroupRss.Value))
+	mg.status = types.PluginReconcileSucceeded
 
 	return nil
 }
 
-func (mg *memoryGuard) GetAdvices() types.InternalMemoryCalculationResult {
+func (mg *memoryGuard) GetAdvices() (*types.InternalMemoryCalculationResult, error) {
+	if mg.status != types.PluginReconcileSucceeded {
+		return nil, fmt.Errorf("unexpected reconcile status %v", mg.status)
+	}
 	result := types.InternalMemoryCalculationResult{
 		ExtraEntries: []types.ExtraMemoryAdvices{
 			{
@@ -115,5 +128,5 @@ func (mg *memoryGuard) GetAdvices() types.InternalMemoryCalculationResult {
 		},
 	}
 
-	return result
+	return &result, nil
 }

@@ -17,6 +17,7 @@ limitations under the License.
 package plugin
 
 import (
+	"fmt"
 	"sync"
 
 	apiconsts "github.com/kubewharf/katalyst-api/pkg/consts"
@@ -41,12 +42,14 @@ type memsetBinder struct {
 	metaReader      metacache.MetaReader
 	emitter         metrics.MetricEmitter
 	containerMemset map[consts.PodContainerName]machine.CPUSet
+	status          types.PluginReconcileStatus
 }
 
 func NewMemsetBinder(conf *config.Configuration, extraConfig interface{}, metaReader metacache.MetaReader, metaServer *metaserver.MetaServer, emitter metrics.MetricEmitter) MemoryAdvisorPlugin {
 	return &memsetBinder{
 		metaReader: metaReader,
 		emitter:    emitter,
+		status:     types.PluginReconcileUnknown,
 	}
 }
 
@@ -71,13 +74,18 @@ func (mb *memsetBinder) Reconcile(status *types.MemoryPressureStatus) error {
 	mb.mutex.Lock()
 	defer mb.mutex.Unlock()
 	mb.containerMemset = containerMemset
+	mb.status = types.PluginReconcileSucceeded
 
 	return nil
 }
 
-func (mb *memsetBinder) GetAdvices() types.InternalMemoryCalculationResult {
+func (mb *memsetBinder) GetAdvices() (*types.InternalMemoryCalculationResult, error) {
 	mb.mutex.RLock()
 	defer mb.mutex.RUnlock()
+	if mb.status != types.PluginReconcileSucceeded {
+		return nil, fmt.Errorf("unexpected reconcile status %v", mb.status)
+	}
+
 	result := types.InternalMemoryCalculationResult{}
 	for podContainerName, memset := range mb.containerMemset {
 		podUID, containerName, err := native.ParsePodContainerName(podContainerName)
@@ -93,5 +101,5 @@ func (mb *memsetBinder) GetAdvices() types.InternalMemoryCalculationResult {
 		result.ContainerEntries = append(result.ContainerEntries, entry)
 	}
 
-	return result
+	return &result, nil
 }

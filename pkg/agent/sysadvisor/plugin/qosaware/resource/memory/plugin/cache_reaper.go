@@ -17,6 +17,7 @@ limitations under the License.
 package plugin
 
 import (
+	"fmt"
 	"sync"
 
 	"k8s.io/apimachinery/pkg/api/resource"
@@ -45,6 +46,7 @@ type cacheReaper struct {
 	metaServer            *metaserver.MetaServer
 	emitter               metrics.MetricEmitter
 	containersToReapCache map[consts.PodContainerName]*types.ContainerInfo
+	status                types.PluginReconcileStatus
 }
 
 func NewCacheReaper(conf *config.Configuration, extraConfig interface{}, metaReader metacache.MetaReader, metaServer *metaserver.MetaServer, emitter metrics.MetricEmitter) MemoryAdvisorPlugin {
@@ -53,6 +55,7 @@ func NewCacheReaper(conf *config.Configuration, extraConfig interface{}, metaRea
 		metaServer:            metaServer,
 		containersToReapCache: make(map[consts.PodContainerName]*types.ContainerInfo),
 		emitter:               emitter,
+		status:                types.PluginReconcileUnknown,
 	}
 }
 
@@ -120,15 +123,19 @@ func (cp *cacheReaper) Reconcile(status *types.MemoryPressureStatus) error {
 	cp.mutex.Lock()
 	defer cp.mutex.Unlock()
 	cp.containersToReapCache = containersToReapCache
+	cp.status = types.PluginReconcileSucceeded
 	return nil
 }
 
-func (cp *cacheReaper) GetAdvices() types.InternalMemoryCalculationResult {
+func (cp *cacheReaper) GetAdvices() (*types.InternalMemoryCalculationResult, error) {
 	result := types.InternalMemoryCalculationResult{
 		ContainerEntries: make([]types.ContainerMemoryAdvices, 0),
 	}
 	cp.mutex.RLock()
 	defer cp.mutex.RUnlock()
+	if cp.status != types.PluginReconcileSucceeded {
+		return nil, fmt.Errorf("unexpected reconcile status %v", cp.status)
+	}
 	for _, ci := range cp.containersToReapCache {
 		entry := types.ContainerMemoryAdvices{
 			PodUID:        ci.PodUID,
@@ -138,5 +145,5 @@ func (cp *cacheReaper) GetAdvices() types.InternalMemoryCalculationResult {
 		result.ContainerEntries = append(result.ContainerEntries, entry)
 	}
 
-	return result
+	return &result, nil
 }

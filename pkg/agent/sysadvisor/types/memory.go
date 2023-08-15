@@ -63,3 +63,12 @@ type InternalMemoryCalculationResult struct {
 	ExtraEntries     []ExtraMemoryAdvices
 	TimeStamp        time.Time
 }
+
+// PluginReconcileStatus works as a flag indicating reconcile result
+type PluginReconcileStatus string
+
+const (
+	PluginReconcileSucceeded PluginReconcileStatus = "succeeded"
+	PluginReconcileFailed    PluginReconcileStatus = "failed"
+	PluginReconcileUnknown   PluginReconcileStatus = "unknown"
+)
