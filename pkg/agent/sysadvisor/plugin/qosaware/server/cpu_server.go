@@ -267,6 +267,8 @@ func (cs *cpuServer) updateContainerInfo(podUID string, containerName string, po
 		ci.OriginOwnerPoolName = originOwnerPoolName
 	}
 
+	general.InfoS("xxx", "pod", ci.PodName, "QoSLevel", ci.QoSLevel, "OriginOwnerPoolName", ci.OriginOwnerPoolName)
+
 	// fill in topology aware assignment for containers with owner pool
 	if ci.QoSLevel != consts.PodAnnotationQoSLevelDedicatedCores {
 		if len(ci.OwnerPoolName) > 0 {
