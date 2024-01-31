@@ -17,8 +17,6 @@ limitations under the License.
 package provisionassembler
 
 import (
-	"context"
-	"fmt"
 	"time"
 
 	"k8s.io/klog/v2"
@@ -27,7 +25,6 @@ import (
 	"github.com/kubewharf/katalyst-core/pkg/agent/qrm-plugins/cpu/dynamicpolicy/state"
 	"github.com/kubewharf/katalyst-core/pkg/agent/sysadvisor/metacache"
 	"github.com/kubewharf/katalyst-core/pkg/agent/sysadvisor/plugin/qosaware/resource/cpu/region"
-	"github.com/kubewharf/katalyst-core/pkg/agent/sysadvisor/plugin/qosaware/resource/helper"
 	"github.com/kubewharf/katalyst-core/pkg/agent/sysadvisor/types"
 	"github.com/kubewharf/katalyst-core/pkg/config"
 	"github.com/kubewharf/katalyst-core/pkg/metaserver"
@@ -107,19 +104,8 @@ func (pa *ProvisionAssemblerCommon) AssembleProvision() (types.InternalCPUCalcul
 			regionNuma := r.GetBindingNumas().ToSliceInt()[0] // always one binding numa for this type of region
 			reservedForReclaim := pa.getNumasReservedForReclaim(r.GetBindingNumas())
 
-			podSet := r.GetPods()
-			if podSet.Pods() != 1 {
-				return types.InternalCPUCalculationResult{}, fmt.Errorf("more than one pod are assgined to numa exclusive region: %v", podSet)
-			}
-			podUID, _, _ := podSet.PopAny()
-
-			enableReclaim, err := helper.PodEnableReclaim(context.Background(), pa.metaServer, podUID, nodeEnableReclaim)
-			if err != nil {
-				return types.InternalCPUCalculationResult{}, err
-			}
-
 			// fill in reclaim pool entry for dedicated numa exclusive regions
-			if !enableReclaim {
+			if !r.EnableReclaim() {
 				if reservedForReclaim > 0 {
 					calculationResult.SetPoolEntry(state.PoolNameReclaim, regionNuma, reservedForReclaim)
 				}

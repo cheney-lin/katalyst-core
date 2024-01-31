@@ -78,6 +78,8 @@ type QoSRegion interface {
 	GetStatus() types.RegionStatus
 	// GetControlEssentials returns the latest control essentials
 	GetControlEssentials() types.ControlEssentials
+
+	EnableReclaim() bool
 }
 
 // GetRegionBasicMetricTags returns metric tag slice of region info and status
