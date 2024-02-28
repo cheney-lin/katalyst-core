@@ -18,6 +18,7 @@ package provisionassembler
 
 import (
 	"math"
+	"strconv"
 	"time"
 
 	"k8s.io/klog/v2"
@@ -35,8 +36,11 @@ import (
 )
 
 const (
-	minShrinkInterval = time.Second * 30
+	minShrinkInterval = time.Second * 20
 	minShrinkStep     = 4
+	minExpandStep     = 2
+
+	metricNameShrinkRegionSize = "shrink_region_size"
 )
 
 type ProvisionAssemblerCommon struct {
@@ -188,6 +192,7 @@ func (pa *ProvisionAssemblerCommon) AssembleProvision() (types.InternalCPUCalcul
 				reclaimPoolSize := general.ClampInt(lastReclaimPoolSize-minShrinkStep, reservedForReclaims[numaID], calculatedSize)
 				calculationResult.SetPoolEntry(state.PoolNameReclaim, numaID, reclaimPoolSize)
 				general.InfoS("shrink to do", "numa", numaID, "lastReclaimPoolSize", lastReclaimPoolSize, "reservedForReclaims", reservedForReclaims[numaID], "calculatedSize", calculatedSize, "reclaimPoolSize", reclaimPoolSize)
+				_ = pa.emitter.StoreInt64(metricNameShrinkRegionSize, int64(calculatedSize-reclaimPoolSize), metrics.MetricTypeNameRaw, metrics.MetricTag{Key: "numa", Val: strconv.Itoa(numaID)})
 			}
 			pa.lastShrink = now
 		} else {
@@ -199,7 +204,21 @@ func (pa *ProvisionAssemblerCommon) AssembleProvision() (types.InternalCPUCalcul
 				reclaimPoolSize := general.Min(lastReclaimPoolSize, calculatedSize)
 				calculationResult.SetPoolEntry(state.PoolNameReclaim, numaID, reclaimPoolSize)
 				general.InfoS("shrink to hold", "numa", numaID, "lastReclaimPoolSize", lastReclaimPoolSize, "reservedForReclaims", reservedForReclaims[numaID], "calculatedSize", calculatedSize, "reclaimPoolSize", reclaimPoolSize)
+				_ = pa.emitter.StoreInt64(metricNameShrinkRegionSize, int64(calculatedSize-reclaimPoolSize), metrics.MetricTypeNameRaw, metrics.MetricTag{Key: "numa", Val: strconv.Itoa(numaID)})
+			}
+		}
+	}
 
+	reclaimPoolSizes := calculationResult.PoolEntries[state.PoolNameReclaim]
+	for numaID, size := range reclaimPoolSizes {
+		if pa.lastResult != nil {
+			laseSize, ok := pa.lastResult.GetPoolEntry(state.PoolNameReclaim, numaID)
+			if !ok {
+				laseSize = 0
+			}
+			if size-laseSize > minExpandStep {
+				calculationResult.SetPoolEntry(state.PoolNameReclaim, numaID, laseSize+minExpandStep)
+				general.InfoS("expand throttled", "numa", numaID, "laseSize", laseSize, "size", size)
 			}
 		}
 	}
