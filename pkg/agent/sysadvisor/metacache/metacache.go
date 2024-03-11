@@ -22,6 +22,7 @@ import (
 	"sync"
 	"time"
 
+	utilruntime "k8s.io/apimachinery/pkg/util/runtime"
 	"k8s.io/apimachinery/pkg/util/sets"
 	"k8s.io/klog/v2"
 	"k8s.io/kubernetes/pkg/kubelet/checkpointmanager"
@@ -294,7 +295,7 @@ func (mc *MetaCacheImp) AddContainer(podUID string, containerName string, contai
 	if podInfo, ok := mc.podEntries[podUID]; ok {
 		if ci, ok := podInfo[containerName]; ok {
 			ci.UpdateMeta(containerInfo)
-			return nil
+			return mc.storeState()
 		}
 	}
 
@@ -315,6 +316,7 @@ func (mc *MetaCacheImp) SetContainerInfo(podUID string, containerName string, co
 }
 
 func (mc *MetaCacheImp) setContainerInfo(podUID string, containerName string, containerInfo *types.ContainerInfo) bool {
+	klog.InfoS("setContainerInfo", "podUID", podUID, "containerName", containerName, "podName", containerInfo.PodName)
 	podInfo, ok := mc.podEntries[podUID]
 	if !ok {
 		mc.podEntries[podUID] = make(types.ContainerEntries)
@@ -529,7 +531,7 @@ func (mc *MetaCacheImp) storeState() error {
 		klog.Errorf("[metacache] store state failed: %v", err)
 		return err
 	}
-	klog.Infof("[metacache] store state succeeded")
+	klog.InfoS("[metacache] store state succeeded", "caller", utilruntime.GetCaller())
 
 	return nil
 }

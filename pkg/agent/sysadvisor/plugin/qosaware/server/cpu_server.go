@@ -42,6 +42,8 @@ import (
 
 const (
 	cpuServerName string = "cpu-server"
+
+	metricUpdateContainerInfoFailed = "update_container_info_failed"
 )
 
 type cpuServer struct {
@@ -164,13 +166,18 @@ func (cs *cpuServer) getCheckpoint() {
 			podUID := entryName
 			pod, err := cs.metaServer.GetPod(ctx, podUID)
 			if err != nil {
-				klog.Errorf("[qosaware-server-cpu] get pod info with error: %v", err)
+				klog.ErrorS(err, "[qosaware-server-cpu] get pod info failed")
 				continue
 			}
 
 			for containerName, info := range entry.Entries {
 				if err := cs.updateContainerInfo(podUID, containerName, pod, info); err != nil {
-					klog.Errorf("[qosaware-server-cpu] update container info with error: %v", err)
+					klog.ErrorS(err, "[qosaware-server-cpu] update container info failed")
+					_ = cs.emitter.StoreInt64(metricUpdateContainerInfoFailed, 1, metrics.MetricTypeNameRaw,
+						metrics.ConvertMapToTags(map[string]string{
+							"pod":       pod.Name,
+							"container": containerName,
+						})...)
 				}
 			}
 		}
