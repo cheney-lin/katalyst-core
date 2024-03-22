@@ -23,15 +23,23 @@ import (
 
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/credentials/insecure"
+	"google.golang.org/grpc/keepalive"
 )
 
 func Dial(unixSocketPath string, timeout time.Duration) (*grpc.ClientConn, error) {
 	ctx, cancel := context.WithTimeout(context.Background(), timeout)
 	defer cancel()
 
+	var kacp = keepalive.ClientParameters{
+		Time:                10 * time.Second, // send pings every 10 seconds if there is no activity
+		Timeout:             time.Second,      // wait 1 second for ping ack before considering the connection dead
+		PermitWithoutStream: true,             // send pings even without active streams
+	}
+
 	c, err := grpc.DialContext(ctx, unixSocketPath,
 		grpc.WithTransportCredentials(insecure.NewCredentials()),
 		grpc.WithBlock(),
+		grpc.WithKeepaliveParams(kacp),
 		grpc.WithContextDialer(func(ctx context.Context, addr string) (net.Conn, error) {
 			return (&net.Dialer{}).DialContext(ctx, "unix", addr)
 		}),
