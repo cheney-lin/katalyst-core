@@ -320,7 +320,7 @@ func (m *ReporterPluginManager) genericSync(ctx context.Context) {
 	begin := time.Now()
 	defer func() {
 		costs := time.Since(begin)
-		klog.InfoS("finished genericSync", "costs", costs)
+		klog.InfoS("finished genericSync", "costs", costs, "ms", costs.Microseconds())
 		_ = m.emitter.StoreInt64(metricsNameGenericSyncCost, costs.Microseconds(), metrics.MetricTypeNameRaw)
 	}()
 
