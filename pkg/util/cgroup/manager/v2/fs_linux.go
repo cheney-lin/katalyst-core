@@ -48,6 +48,7 @@ func NewManager() *manager {
 }
 
 func (m *manager) ApplyMemory(absCgroupPath string, data *common.MemoryData) error {
+	klog.InfoS("", "absCgroupPath", absCgroupPath, "swap", data.SwapMaxInBytes)
 	if data.LimitInBytes != 0 {
 		if err, applied, oldData := common.WriteFileIfChange(absCgroupPath, "memory.max", numToStr(data.LimitInBytes)); err != nil {
 			return err
@@ -87,11 +88,15 @@ func (m *manager) ApplyMemory(absCgroupPath string, data *common.MemoryData) err
 		if data.SwapMaxInBytes > 0 {
 			swapMax = data.SwapMaxInBytes
 		}
+		klog.InfoS("xxx", "absCgroupPath", absCgroupPath, "swapMax", swapMax)
+
 		if err, applied, oldData := common.WriteFileIfChange(absCgroupPath, "memory.swap.max", fmt.Sprintf("%d", swapMax)); err != nil {
+			klog.ErrorS(err, "absCgroupPath", absCgroupPath, "swapMax", swapMax)
 			return err
 		} else if applied {
 			klog.Infof("[CgroupV2] apply memory swap max successfully, cgroupPath: %s, data: %v, old data: %v\n", absCgroupPath, swapMax, oldData)
 		}
+		klog.InfoS("xxx", "absCgroupPath", absCgroupPath, "swapMax", swapMax)
 	}
 	return nil
 }

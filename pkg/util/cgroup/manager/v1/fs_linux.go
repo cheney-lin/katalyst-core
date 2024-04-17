@@ -45,6 +45,7 @@ func NewManager() *manager {
 }
 
 func (m *manager) ApplyMemory(absCgroupPath string, data *common.MemoryData) error {
+	klog.InfoS("", "absCgroupPath", absCgroupPath)
 	if data.LimitInBytes != 0 {
 		if err, applied, oldData := common.WriteFileIfChange(absCgroupPath, "memory.limit_in_bytes", strconv.FormatInt(data.LimitInBytes, 10)); err != nil {
 			return err

@@ -378,6 +378,7 @@ func DisableSwapMaxWithAbsolutePathRecursive(absCgroupPath string) error {
 			return err
 		}
 		if info.IsDir() {
+			general.InfoS("", "path", path)
 			swapMaxData := &common.MemoryData{SwapMaxInBytes: -1}
 			err = GetManager().ApplyMemory(path, swapMaxData)
 			if err != nil {
