@@ -452,7 +452,7 @@ func MemoryOffloadingWithAbsolutePath(ctx context.Context, absCgroupPath string,
 			return nil
 		}
 		// cgv2
-		cmd = fmt.Sprintf("echo %d > %s", nbytes, filepath.Join(absCgroupPath, "memory.reclaim"))
+		cmd = fmt.Sprintf("nice -n 19 echo %d > %s", nbytes, filepath.Join(absCgroupPath, "memory.reclaim"))
 	} else {
 		// cgv1
 		general.Infof("[MemoryOffloadingWithAbsolutePath] is not supported on cgroupv1")
