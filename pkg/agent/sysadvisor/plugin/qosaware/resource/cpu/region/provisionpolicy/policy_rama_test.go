@@ -27,13 +27,13 @@ import (
 	"k8s.io/apimachinery/pkg/runtime"
 	k8types "k8s.io/apimachinery/pkg/types"
 
+	"github.com/kubewharf/katalyst-api/pkg/apis/config/v1alpha1"
 	apiconsts "github.com/kubewharf/katalyst-api/pkg/consts"
 	katalyst_base "github.com/kubewharf/katalyst-core/cmd/base"
 	"github.com/kubewharf/katalyst-core/cmd/katalyst-agent/app/options"
 	"github.com/kubewharf/katalyst-core/pkg/agent/sysadvisor/metacache"
 	"github.com/kubewharf/katalyst-core/pkg/agent/sysadvisor/types"
 	"github.com/kubewharf/katalyst-core/pkg/config"
-	provisionconf "github.com/kubewharf/katalyst-core/pkg/config/agent/sysadvisor/qosaware/resource/cpu/provision"
 	"github.com/kubewharf/katalyst-core/pkg/consts"
 	"github.com/kubewharf/katalyst-core/pkg/metaserver"
 	"github.com/kubewharf/katalyst-core/pkg/metaserver/agent/metric"
@@ -54,13 +54,13 @@ func generateRamaTestConfiguration(t *testing.T, checkpointDir, stateFileDir, ch
 	conf.MetaServerConfiguration.CheckpointManagerDir = checkpointDir
 	conf.CheckpointManagerDir = checkpointManagerDir
 
-	conf.RegionIndicatorTargetConfiguration = map[types.QoSRegionType][]types.IndicatorTargetConfiguration{
-		types.QoSRegionTypeShare: {
+	conf.GetDynamicConfiguration().RegionIndicatorTargetConfiguration = map[string][]v1alpha1.IndicatorTargetConfiguration{
+		string(types.QoSRegionTypeShare): {
 			{
 				Name: consts.MetricCPUSchedwait,
 			},
 		},
-		types.QoSRegionTypeDedicatedNumaExclusive: {
+		string(types.QoSRegionTypeDedicatedNumaExclusive): {
 			{
 				Name: consts.MetricCPUCPIContainer,
 			},
@@ -70,8 +70,8 @@ func generateRamaTestConfiguration(t *testing.T, checkpointDir, stateFileDir, ch
 		},
 	}
 
-	conf.PolicyRama = &provisionconf.PolicyRamaConfiguration{
-		PIDParameters: map[string]types.FirstOrderPIDParams{
+	conf.GetDynamicConfiguration().PolicyRama = &v1alpha1.PolicyRamaConfiguration{
+		PIDParameters: map[string]v1alpha1.FirstOrderPIDParams{
 			consts.MetricCPUSchedwait: {
 				Kpp:                  10.0,
 				Kpn:                  1.0,
@@ -199,7 +199,7 @@ func TestPolicyRama(t *testing.T) {
 			},
 			controlEssentials: types.ControlEssentials{
 				ControlKnobs: types.ControlKnob{
-					types.ControlKnobNonReclaimedCPUSize: {
+					types.ControlKnobNonReclaimedCPURequirement: {
 						Value:  40,
 						Action: types.ControlKnobActionNone,
 					},
@@ -213,7 +213,7 @@ func TestPolicyRama(t *testing.T) {
 				ReclaimOverlap: false,
 			},
 			wantResult: types.ControlKnob{
-				types.ControlKnobNonReclaimedCPUSize: {
+				types.ControlKnobNonReclaimedCPURequirement: {
 					Value:  46.93147180559946,
 					Action: types.ControlKnobActionNone,
 				},
@@ -254,7 +254,7 @@ func TestPolicyRama(t *testing.T) {
 			},
 			controlEssentials: types.ControlEssentials{
 				ControlKnobs: types.ControlKnob{
-					types.ControlKnobNonReclaimedCPUSize: {
+					types.ControlKnobNonReclaimedCPURequirement: {
 						Value:  40,
 						Action: types.ControlKnobActionNone,
 					},
@@ -268,7 +268,7 @@ func TestPolicyRama(t *testing.T) {
 				ReclaimOverlap: false,
 			},
 			wantResult: types.ControlKnob{
-				types.ControlKnobNonReclaimedCPUSize: {
+				types.ControlKnobNonReclaimedCPURequirement: {
 					Value:  38,
 					Action: types.ControlKnobActionNone,
 				},
@@ -309,7 +309,7 @@ func TestPolicyRama(t *testing.T) {
 			},
 			controlEssentials: types.ControlEssentials{
 				ControlKnobs: types.ControlKnob{
-					types.ControlKnobNonReclaimedCPUSize: {
+					types.ControlKnobNonReclaimedCPURequirement: {
 						Value:  40,
 						Action: types.ControlKnobActionNone,
 					},
@@ -323,7 +323,7 @@ func TestPolicyRama(t *testing.T) {
 				ReclaimOverlap: false,
 			},
 			wantResult: types.ControlKnob{
-				types.ControlKnobNonReclaimedCPUSize: {
+				types.ControlKnobNonReclaimedCPURequirement: {
 					Value:  40,
 					Action: types.ControlKnobActionNone,
 				},
@@ -359,7 +359,7 @@ func TestPolicyRama(t *testing.T) {
 			},
 			controlEssentials: types.ControlEssentials{
 				ControlKnobs: types.ControlKnob{
-					types.ControlKnobNonReclaimedCPUSize: {
+					types.ControlKnobNonReclaimedCPURequirement: {
 						Value:  40,
 						Action: types.ControlKnobActionNone,
 					},
@@ -377,8 +377,8 @@ func TestPolicyRama(t *testing.T) {
 				ReclaimOverlap: true,
 			},
 			wantResult: types.ControlKnob{
-				types.ControlKnobNonReclaimedCPUSize: {
-					Value:  90,
+				types.ControlKnobNonReclaimedCPURequirement: {
+					Value:  46.93147180559945,
 					Action: types.ControlKnobActionNone,
 				},
 			},

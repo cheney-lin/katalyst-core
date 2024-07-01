@@ -104,7 +104,7 @@ func (r *provisionPolicyResult) regulateControlKnob(currentControlKnob types.Con
 				reg.SetEssentials(r.essentials)
 			}
 
-			reg.SetLatestRequirement(int(knob.Value))
+			reg.SetLatestControlKnobValue(knob)
 			r.controlKnobValueRegulators[name] = reg
 		}
 	}
@@ -116,7 +116,7 @@ func (r *provisionPolicyResult) regulateControlKnob(currentControlKnob types.Con
 			reg.SetEssentials(r.essentials)
 		}
 
-		reg.Regulate(knob.Value)
+		reg.Regulate(knob)
 		r.controlKnobValueRegulators[name] = reg
 	}
 }
@@ -125,7 +125,7 @@ func (r *provisionPolicyResult) regulateControlKnob(currentControlKnob types.Con
 func (r *provisionPolicyResult) newRegulator(name types.ControlKnobName) regulator.Regulator {
 	switch name {
 	// only non-reclaimed cpu size need regulate now
-	case types.ControlKnobNonReclaimedCPUSize:
+	case types.ControlKnobNonReclaimedCPURequirement:
 		return regulator.NewCPURegulator()
 	default:
 		return regulator.NewDummyRegulator()
@@ -139,6 +139,7 @@ func (r *provisionPolicyResult) getControlKnob() types.ControlKnob {
 		controlKnob[name] = types.ControlKnobValue{
 			Value:  float64(r.GetRequirement()),
 			Action: types.ControlKnobActionNone,
+			Reason: r.GetReason(),
 		}
 	}
 	return controlKnob
@@ -182,10 +183,8 @@ type QoSRegionBase struct {
 	metaServer *metaserver.MetaServer
 	emitter    metrics.MetricEmitter
 
-	// enableBorweinModel and borweinController will take effect only when using rama provision policy.
-	// If enableBorweinModel is set, borweinController will update target indicators by model inference.
-	enableBorweinModel bool
-	borweinController  *borweinctrl.BorweinController
+	// borweinController will take effect only when using rama provision policy.
+	borweinController *borweinctrl.BorweinController
 
 	// enableReclaim returns true if the resources of region can be reclaimed to supply for reclaimed_cores
 	enableReclaim func() bool
@@ -225,9 +224,8 @@ func NewQoSRegionBase(name string, ownerPoolName string, regionType types.QoSReg
 		metaServer: metaServer,
 		emitter:    emitter,
 
-		enableBorweinModel: conf.PolicyRama.EnableBorwein,
-		throttled:          *atomic.NewBool(false),
-		idle:               *atomic.NewBool(false),
+		throttled: *atomic.NewBool(false),
+		idle:      *atomic.NewBool(false),
 
 		isNumaBinding: isNumaBinding,
 	}
@@ -239,7 +237,7 @@ func NewQoSRegionBase(name string, ownerPoolName string, regionType types.QoSReg
 	// it only takes effect when updating target indicators,
 	// if there are more code positions depending on it,
 	// we should consider provide a dummy borwein controller to avoid redundant judgement.
-	if r.enableBorweinModel {
+	if r.conf.GetDynamicConfiguration().PolicyRama.EnableBorwein {
 		r.borweinController = borweinctrl.NewBorweinController(name, regionType, ownerPoolName, conf, metaReader, emitter)
 	}
 	r.enableReclaim = r.EnableReclaim
@@ -383,15 +381,14 @@ func (r *QoSRegionBase) GetProvision() (types.ControlKnob, error) {
 		if r.provisionPolicyNameInUse != oldProvisionPolicyNameInUse {
 			klog.Infof("[qosaware-cpu] region: %v provision policy switch from %v to %v",
 				r.Name(), oldProvisionPolicyNameInUse, r.provisionPolicyNameInUse)
-			if r.enableBorweinModel {
+			if r.conf.GetDynamicConfiguration().PolicyRama.EnableBorwein {
 				r.borweinController.ResetIndicatorOffsets()
 			}
 		}
-
 		return result.getControlKnob(), nil
 	}
 
-	return types.ControlKnob{}, fmt.Errorf("failed to get legal provision")
+	return nil, fmt.Errorf("failed to get legal provision")
 }
 
 func (r *QoSRegionBase) GetHeadroom() (float64, error) {
@@ -464,7 +461,7 @@ func (r *QoSRegionBase) GetStatus() types.RegionStatus {
 	r.Lock()
 	defer r.Unlock()
 
-	return r.regionStatus
+	return r.regionStatus.Clone()
 }
 
 func (r *QoSRegionBase) GetControlEssentials() types.ControlEssentials {
@@ -589,7 +586,7 @@ func (r *QoSRegionBase) getProvisionControlKnob() map[types.CPUProvisionPolicyNa
 			}...)
 
 			klog.InfoS("[qosaware-cpu] get raw control knob", "region", r.name, "policy", internal.name,
-				"knob", name, "action", value.Action, "value", value.Value)
+				"knob", name, "action", value.Action, "value", value.Value, "reason", value.Reason)
 		}
 	}
 
@@ -648,7 +645,7 @@ func (r *QoSRegionBase) regulateProvisionControlKnob(originControlKnob map[types
 				{Key: metricTagKeyControlKnobAction, Val: string(value.Action)},
 			}...)
 			klog.InfoS("[qosaware-cpu] get regulated control knob", "region", r.name, "policy", policy, "knob", knob,
-				"action", value.Action, "value", value.Value)
+				"action", value.Action, "value", value.Value, "reason", value.Reason)
 		}
 	}
 }
@@ -656,10 +653,12 @@ func (r *QoSRegionBase) regulateProvisionControlKnob(originControlKnob map[types
 // getIndicators returns indicator targets from spd and current by region specific indicator getters
 func (r *QoSRegionBase) getIndicators() (types.Indicator, error) {
 	ctx := context.Background()
-	indicatorTargetConfig, ok := r.conf.RegionIndicatorTargetConfiguration[r.regionType]
+	indicatorTargetConfig, ok := r.conf.GetDynamicConfiguration().RegionIndicatorTargetConfiguration[string(r.regionType)]
 	if !ok {
 		return nil, fmt.Errorf("get %v indicators failed", r.regionType)
 	}
+
+	general.Infof("indicatorTargetConfig: %v, region %v", indicatorTargetConfig, r.name)
 
 	indicators := make(types.Indicator)
 	for _, indicator := range indicatorTargetConfig {
@@ -701,7 +700,7 @@ func (r *QoSRegionBase) getIndicators() (types.Indicator, error) {
 
 		indicators[indicatorName] = indicatorValue
 	}
-	if r.enableBorweinModel && r.provisionPolicyNameInUse == types.CPUProvisionPolicyRama {
+	if r.conf.GetDynamicConfiguration().PolicyRama.EnableBorwein && r.provisionPolicyNameInUse == types.CPUProvisionPolicyRama {
 		general.Infof("try to update indicators by borwein model")
 		return r.borweinController.GetUpdatedIndicators(indicators, r.podSet), nil
 	} else {
@@ -759,9 +758,10 @@ func (r *QoSRegionBase) updateBoundType(overshoot bool) {
 	boundType := types.BoundUnknown
 	resourceUpperBoundHit := false
 	if r.IsThrottled() {
+		general.Infof("region %v is throttled", r.name)
 		boundType = types.BoundUpper
 	} else if r.ControlEssentials.ControlKnobs != nil {
-		if v, ok := r.ControlEssentials.ControlKnobs[types.ControlKnobNonReclaimedCPUSize]; ok {
+		if v, ok := r.ControlEssentials.ControlKnobs[types.ControlKnobNonReclaimedCPURequirement]; ok {
 			if v.Value <= r.ResourceEssentials.ResourceLowerBound {
 				boundType = types.BoundLower
 			} else {
@@ -774,6 +774,7 @@ func (r *QoSRegionBase) updateBoundType(overshoot bool) {
 	}
 
 	if overshoot && resourceUpperBoundHit {
+		general.Infof("region %v is overshoot and resourceUpperBoundHit", r.name)
 		boundType = types.BoundUpper
 	}
 	// fill in bound entry
