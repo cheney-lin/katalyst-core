@@ -26,33 +26,9 @@ import (
 	cliflag "k8s.io/component-base/cli/flag"
 
 	"github.com/kubewharf/katalyst-api/pkg/apis/config/v1alpha1"
-	"github.com/kubewharf/katalyst-core/pkg/agent/sysadvisor/types"
+	workloadapi "github.com/kubewharf/katalyst-api/pkg/apis/workload/v1alpha1"
 	"github.com/kubewharf/katalyst-core/pkg/config/agent/dynamic/adminqos/advisor"
 )
-
-type PolicyRamaOptions struct {
-	EnableBorwein                   bool
-	EnableBorweinModelResultFetcher bool
-}
-
-func NewPolicyRamaOptions() *PolicyRamaOptions {
-	return &PolicyRamaOptions{}
-}
-
-// AddFlags adds flags to the specified FlagSet.
-func (o *PolicyRamaOptions) AddFlags(fs *pflag.FlagSet) {
-	fs.BoolVar(&o.EnableBorwein, "enable-borwein-in-rama", o.EnableBorwein,
-		"if set as true, enable borwein model to adjust target indicator offset in rama policy")
-	fs.BoolVar(&o.EnableBorweinModelResultFetcher, "enable-borwein-model-result-fetcher", o.EnableBorweinModelResultFetcher,
-		"if set as true, enable borwein model result fetcher to call borwein-inference-server and get results")
-}
-
-// ApplyTo fills up config with options
-func (o *PolicyRamaOptions) ApplyTo(c *v1alpha1.PolicyRamaConfiguration) error {
-	c.EnableBorwein = o.EnableBorwein
-	c.EnableBorweinModelResultFetcher = o.EnableBorweinModelResultFetcher
-	return nil
-}
 
 func stringMapToControlKnobMap(origin map[string]string) (map[string]float64, error) {
 	controlKnobMap := make(map[string]float64)
@@ -76,16 +52,16 @@ type ControlKnobConstrains struct {
 func NewControlKnobConstrains() *ControlKnobConstrains {
 	return &ControlKnobConstrains{
 		RestrictControlKnobMaxUpperGap: map[string]string{
-			string(types.ControlKnobNonReclaimedCPURequirement): "20",
+			string(v1alpha1.ControlKnobNonReclaimedCPURequirement): "20",
 		},
 		RestrictControlKnobMaxLowerGap: map[string]string{
-			string(types.ControlKnobNonReclaimedCPURequirement): "20",
+			string(v1alpha1.ControlKnobNonReclaimedCPURequirement): "20",
 		},
 		RestrictControlKnobMaxUpperGapRatio: map[string]string{
-			string(types.ControlKnobNonReclaimedCPURequirement): "0.3",
+			string(v1alpha1.ControlKnobNonReclaimedCPURequirement): "0.3",
 		},
 		RestrictControlKnobMaxLowerGapRatio: map[string]string{
-			string(types.ControlKnobNonReclaimedCPURequirement): "0.3",
+			string(v1alpha1.ControlKnobNonReclaimedCPURequirement): "0.3",
 		},
 	}
 }
@@ -101,37 +77,64 @@ func (o *ControlKnobConstrains) AddFlags(fs *pflag.FlagSet) {
 		"the max lower gap ratio between the reference policy's control knob and and the base one")
 }
 
-func (o *ControlKnobConstrains) ApplyTo(c *v1alpha1.ControlKnobConstraints) error {
-	restrictControlKnobMaxGap, err := stringMapToControlKnobMap(o.RestrictControlKnobMaxUpperGap)
+func (o *ControlKnobConstrains) ApplyTo(c map[v1alpha1.ControlKnobName]v1alpha1.ControlKnobConstraints) error {
+	restrictControlKnobMaxUpperGap, err := stringMapToControlKnobMap(o.RestrictControlKnobMaxUpperGap)
 	if err != nil {
 		return err
 	}
-	c.RestrictControlKnobMaxUpperGap = restrictControlKnobMaxGap
+	for name, maxUpperGap := range restrictControlKnobMaxUpperGap {
+		gap, ok := c[v1alpha1.ControlKnobName(name)]
+		if !ok {
+			gap = v1alpha1.ControlKnobConstraints{}
+		}
+		gap.RestrictControlKnobMaxUpperGap = &maxUpperGap
+		c[v1alpha1.ControlKnobName(name)] = gap
+	}
 
 	restrictControlKnobMaxLowerGap, err := stringMapToControlKnobMap(o.RestrictControlKnobMaxLowerGap)
 	if err != nil {
 		return err
 	}
-	c.RestrictControlKnobMaxLowerGap = restrictControlKnobMaxLowerGap
+	for name, maxLowerGap := range restrictControlKnobMaxLowerGap {
+		gap, ok := c[v1alpha1.ControlKnobName(name)]
+		if !ok {
+			gap = v1alpha1.ControlKnobConstraints{}
+		}
+		gap.RestrictControlKnobMaxLowerGap = &maxLowerGap
+		c[v1alpha1.ControlKnobName(name)] = gap
+	}
 
-	restrictControlKnobMaxGapRatio, err := stringMapToControlKnobMap(o.RestrictControlKnobMaxUpperGapRatio)
+	restrictControlKnobMaxUpperGapRatio, err := stringMapToControlKnobMap(o.RestrictControlKnobMaxUpperGapRatio)
 	if err != nil {
 		return err
 	}
-	c.RestrictControlKnobMaxUpperGapRatio = restrictControlKnobMaxGapRatio
+	for name, maxUpperGapRatio := range restrictControlKnobMaxUpperGapRatio {
+		gap, ok := c[v1alpha1.ControlKnobName(name)]
+		if !ok {
+			gap = v1alpha1.ControlKnobConstraints{}
+		}
+		gap.RestrictControlKnobMaxUpperGapRatio = &maxUpperGapRatio
+		c[v1alpha1.ControlKnobName(name)] = gap
+	}
 
 	restrictControlKnobMaxLowerGapRatio, err := stringMapToControlKnobMap(o.RestrictControlKnobMaxLowerGapRatio)
 	if err != nil {
 		return err
 	}
-	c.RestrictControlKnobMaxLowerGapRatio = restrictControlKnobMaxLowerGapRatio
+	for name, maxLowerGapRatio := range restrictControlKnobMaxLowerGapRatio {
+		gap, ok := c[v1alpha1.ControlKnobName(name)]
+		if !ok {
+			gap = v1alpha1.ControlKnobConstraints{}
+		}
+		gap.RestrictControlKnobMaxLowerGapRatio = &maxLowerGapRatio
+		c[v1alpha1.ControlKnobName(name)] = gap
+	}
 
 	return nil
 }
 
 type CPUProvisionOptions struct {
 	AllowSharedCoresOverlapReclaimedCores bool
-	PolicyRama                            *PolicyRamaOptions
 	RegionIndicatorTargetOptions          map[string]string
 	ControlKnobConstrains                 *ControlKnobConstrains
 }
@@ -139,7 +142,6 @@ type CPUProvisionOptions struct {
 func NewCPUProvisionOptions() *CPUProvisionOptions {
 	return &CPUProvisionOptions{
 		AllowSharedCoresOverlapReclaimedCores: false,
-		PolicyRama:                            NewPolicyRamaOptions(),
 		RegionIndicatorTargetOptions:          map[string]string{},
 		ControlKnobConstrains:                 NewControlKnobConstrains(),
 	}
@@ -150,7 +152,6 @@ func (o *CPUProvisionOptions) ApplyTo(c *advisor.CPUProvisionConfiguration) erro
 	var errList []error
 	c.AllowSharedCoresOverlapReclaimedCores = o.AllowSharedCoresOverlapReclaimedCores
 
-	errList = append(errList, o.PolicyRama.ApplyTo(c.PolicyRama))
 	for regionType, targets := range o.RegionIndicatorTargetOptions {
 		regionIndicatorTarget := make([]v1alpha1.IndicatorTargetConfiguration, 0)
 		indicatorTargets := strings.Split(targets, "/")
@@ -165,9 +166,9 @@ func (o *CPUProvisionOptions) ApplyTo(c *advisor.CPUProvisionConfiguration) erro
 				errList = append(errList, err)
 				continue
 			}
-			regionIndicatorTarget = append(regionIndicatorTarget, v1alpha1.IndicatorTargetConfiguration{Name: tmp[0], Target: target})
+			regionIndicatorTarget = append(regionIndicatorTarget, v1alpha1.IndicatorTargetConfiguration{Name: workloadapi.ServiceSystemIndicatorName(tmp[0]), Target: target})
 		}
-		c.RegionIndicatorTargetConfiguration[regionType] = regionIndicatorTarget
+		c.RegionIndicatorTargetConfiguration[v1alpha1.QoSRegionType(regionType)] = regionIndicatorTarget
 	}
 	errList = append(errList, o.ControlKnobConstrains.ApplyTo(c.ControlKnobConstraints))
 
@@ -179,7 +180,6 @@ func (o *CPUProvisionOptions) AddFlags(fss *cliflag.NamedFlagSets) {
 	fs := fss.FlagSet("cpu-provision")
 	fs.BoolVar(&o.AllowSharedCoresOverlapReclaimedCores, "allow-shared-cores-overlap-reclaimed-cores", o.AllowSharedCoresOverlapReclaimedCores,
 		"set true to allow shared_cores overlap reclaimed_cores")
-	o.PolicyRama.AddFlags(fs)
 	fs.StringToStringVar(&o.RegionIndicatorTargetOptions, "region-indicator-targets", o.RegionIndicatorTargetOptions,
 		"indicators targets for each region, in format like cpu_sched_wait=400/cpu_iowait_ratio=0.8")
 }

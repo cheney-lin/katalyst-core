@@ -23,6 +23,7 @@ import (
 	"k8s.io/apimachinery/pkg/util/errors"
 	"k8s.io/klog/v2"
 
+	configapi "github.com/kubewharf/katalyst-api/pkg/apis/config/v1alpha1"
 	"github.com/kubewharf/katalyst-core/pkg/agent/sysadvisor/metacache"
 	"github.com/kubewharf/katalyst-core/pkg/agent/sysadvisor/plugin/qosaware/resource/helper"
 	"github.com/kubewharf/katalyst-core/pkg/agent/sysadvisor/types"
@@ -42,7 +43,7 @@ type PolicyRama struct {
 	controllers map[string]*helper.PIDController // map[metricName]controller
 }
 
-func NewPolicyRama(regionName string, regionType types.QoSRegionType, ownerPoolName string,
+func NewPolicyRama(regionName string, regionType configapi.QoSRegionType, ownerPoolName string,
 	conf *config.Configuration, _ interface{}, metaReader metacache.MetaReader,
 	metaServer *metaserver.MetaServer, emitter metrics.MetricEmitter,
 ) ProvisionPolicy {
@@ -61,14 +62,14 @@ func (p *PolicyRama) Update() error {
 		return err
 	}
 
-	cpuSize := p.ControlKnobs[types.ControlKnobNonReclaimedCPURequirement].Value
+	cpuSize := p.ControlKnobs[configapi.ControlKnobNonReclaimedCPURequirement].Value
 
 	cpuAdjustedRaw := math.Inf(-1)
 	dominantIndicator := "unknown"
 
 	// run pid control for each indicator
 	for metricName, indicator := range p.Indicators {
-		params, ok := p.conf.GetDynamicConfiguration().PolicyRama.PIDParameters[metricName]
+		params, ok := p.conf.PolicyRama.PIDParameters[metricName]
 		if !ok {
 			klog.Warningf("[qosaware-cpu-rama] pid parameter not found for indicator %v", metricName)
 			continue
@@ -97,7 +98,7 @@ func (p *PolicyRama) Update() error {
 	}...)
 
 	for metricName := range p.controllers {
-		_, ok := p.conf.GetDynamicConfiguration().PolicyRama.PIDParameters[metricName]
+		_, ok := p.conf.PolicyRama.PIDParameters[metricName]
 		if !ok {
 			delete(p.controllers, metricName)
 		}
@@ -106,13 +107,11 @@ func (p *PolicyRama) Update() error {
 	general.Infof("[qosaware-cpu-rama] ReclaimOverlap=%v, region=%v", p.ControlEssentials.ReclaimOverlap, p.regionName)
 
 	cpuAdjustedRestricted := cpuAdjustedRaw
-	reason := ""
 
 	p.controlKnobAdjusted = types.ControlKnob{
-		types.ControlKnobNonReclaimedCPURequirement: types.ControlKnobValue{
+		configapi.ControlKnobNonReclaimedCPURequirement: types.ControlKnobValue{
 			Value:  cpuAdjustedRestricted,
 			Action: types.ControlKnobActionNone,
-			Reason: reason,
 		},
 	}
 
@@ -142,7 +141,7 @@ func (p *PolicyRama) sanityCheck() error {
 	if p.ControlKnobs == nil || len(p.ControlKnobs) <= 0 {
 		isLegal = false
 	} else {
-		v, ok := p.ControlKnobs[types.ControlKnobNonReclaimedCPURequirement]
+		v, ok := p.ControlKnobs[configapi.ControlKnobNonReclaimedCPURequirement]
 		if !ok || v.Value <= 0 {
 			isLegal = false
 		}

@@ -35,6 +35,7 @@ import (
 	k8stypes "k8s.io/apimachinery/pkg/types"
 	"k8s.io/kubelet/pkg/apis/resourceplugin/v1alpha1"
 
+	configapi "github.com/kubewharf/katalyst-api/pkg/apis/config/v1alpha1"
 	configv1alpha1 "github.com/kubewharf/katalyst-api/pkg/apis/config/v1alpha1"
 	workloadapis "github.com/kubewharf/katalyst-api/pkg/apis/workload/v1alpha1"
 	"github.com/kubewharf/katalyst-api/pkg/consts"
@@ -159,7 +160,7 @@ func TestAdvisorUpdate(t *testing.T) {
 		pods                          []*v1.Pod
 		nodeEnableReclaim             bool
 		headroomAssembler             types.CPUHeadroomAssemblerName
-		headroomPolicies              map[types.QoSRegionType][]types.CPUHeadroomPolicyName
+		headroomPolicies              map[configapi.QoSRegionType][]types.CPUHeadroomPolicyName
 		podProfiles                   map[k8stypes.UID]spd.DummyPodServiceProfile
 		wantInternalCalculationResult types.InternalCPUCalculationResult
 		wantHeadroom                  resource.Quantity
@@ -191,8 +192,8 @@ func TestAdvisorUpdate(t *testing.T) {
 					state.PoolNameReclaim: {-1: 94},
 				},
 			},
-			headroomPolicies: map[types.QoSRegionType][]types.CPUHeadroomPolicyName{
-				types.QoSRegionTypeDedicatedNumaExclusive: {types.CPUHeadroomPolicyNone},
+			headroomPolicies: map[configapi.QoSRegionType][]types.CPUHeadroomPolicyName{
+				configapi.QoSRegionTypeDedicatedNumaExclusive: {types.CPUHeadroomPolicyNone},
 			},
 			wantHeadroom:    resource.Quantity{},
 			wantHeadroomErr: false,
@@ -499,8 +500,8 @@ func TestAdvisorUpdate(t *testing.T) {
 			},
 			nodeEnableReclaim: true,
 			headroomAssembler: types.CPUHeadroomAssemblerDedicated,
-			headroomPolicies: map[types.QoSRegionType][]types.CPUHeadroomPolicyName{
-				types.QoSRegionTypeDedicatedNumaExclusive: {types.CPUHeadroomPolicyNonReclaim},
+			headroomPolicies: map[configapi.QoSRegionType][]types.CPUHeadroomPolicyName{
+				configapi.QoSRegionTypeDedicatedNumaExclusive: {types.CPUHeadroomPolicyNonReclaim},
 			},
 			wantInternalCalculationResult: types.InternalCPUCalculationResult{
 				PoolEntries: map[string]map[int]int{
@@ -554,9 +555,9 @@ func TestAdvisorUpdate(t *testing.T) {
 			nodeEnableReclaim: true,
 			podProfiles:       map[k8stypes.UID]spd.DummyPodServiceProfile{"uid1": {PerformanceLevel: spd.PerformanceLevelPoor, Score: 0}},
 			headroomAssembler: types.CPUHeadroomAssemblerDedicated,
-			headroomPolicies: map[types.QoSRegionType][]types.CPUHeadroomPolicyName{
-				types.QoSRegionTypeShare:                  {types.CPUHeadroomPolicyCanonical},
-				types.QoSRegionTypeDedicatedNumaExclusive: {types.CPUHeadroomPolicyNUMAExclusive},
+			headroomPolicies: map[configapi.QoSRegionType][]types.CPUHeadroomPolicyName{
+				configapi.QoSRegionTypeShare:                  {types.CPUHeadroomPolicyCanonical},
+				configapi.QoSRegionTypeDedicatedNumaExclusive: {types.CPUHeadroomPolicyNUMAExclusive},
 			},
 			wantInternalCalculationResult: types.InternalCPUCalculationResult{
 				PoolEntries: map[string]map[int]int{
@@ -608,9 +609,9 @@ func TestAdvisorUpdate(t *testing.T) {
 			nodeEnableReclaim: true,
 			podProfiles:       map[k8stypes.UID]spd.DummyPodServiceProfile{"uid1": {PerformanceLevel: spd.PerformanceLevelPerfect, Score: 50}},
 			headroomAssembler: types.CPUHeadroomAssemblerDedicated,
-			headroomPolicies: map[types.QoSRegionType][]types.CPUHeadroomPolicyName{
-				types.QoSRegionTypeShare:                  {types.CPUHeadroomPolicyCanonical},
-				types.QoSRegionTypeDedicatedNumaExclusive: {types.CPUHeadroomPolicyNUMAExclusive},
+			headroomPolicies: map[configapi.QoSRegionType][]types.CPUHeadroomPolicyName{
+				configapi.QoSRegionTypeShare:                  {types.CPUHeadroomPolicyCanonical},
+				configapi.QoSRegionTypeDedicatedNumaExclusive: {types.CPUHeadroomPolicyNUMAExclusive},
 			},
 			wantInternalCalculationResult: types.InternalCPUCalculationResult{
 				PoolEntries: map[string]map[int]int{
@@ -1139,32 +1140,32 @@ func TestAdvisorUpdate(t *testing.T) {
 			conf.IsolatedMaxResourceRatio = 0.3
 			conf.IsolationLockInThreshold = 1
 			conf.IsolationLockOutPeriodSecs = 30
-			conf.GetDynamicConfiguration().RegionIndicatorTargetConfiguration = map[string][]configv1alpha1.IndicatorTargetConfiguration{
-				string(types.QoSRegionTypeShare): {
+			conf.GetDynamicConfiguration().RegionIndicatorTargetConfiguration = map[configapi.QoSRegionType][]configv1alpha1.IndicatorTargetConfiguration{
+				configapi.QoSRegionTypeShare: {
 					{
-						Name:   string(workloadapis.ServiceSystemIndicatorNameCPUSchedWait),
+						Name:   workloadapis.ServiceSystemIndicatorNameCPUSchedWait,
 						Target: 460,
 					},
 					{
-						Name:   string(workloadapis.ServiceSystemIndicatorNameCPUUsageRatio),
+						Name:   workloadapis.ServiceSystemIndicatorNameCPUUsageRatio,
 						Target: 0.8,
 					},
 					{
-						Name:   string(workloadapis.ServiceSystemIndicatorNameMemoryAccessReadLatency),
+						Name:   workloadapis.ServiceSystemIndicatorNameMemoryAccessReadLatency,
 						Target: 80,
 					},
 					{
-						Name:   string(workloadapis.ServiceSystemIndicatorNameMemoryAccessWriteLatency),
+						Name:   workloadapis.ServiceSystemIndicatorNameMemoryAccessWriteLatency,
 						Target: 200,
 					},
 					{
-						Name:   string(workloadapis.ServiceSystemIndicatorNameMemoryL3MissLatency),
+						Name:   workloadapis.ServiceSystemIndicatorNameMemoryL3MissLatency,
 						Target: 400,
 					},
 				},
-				string(types.QoSRegionTypeDedicatedNumaExclusive): {
+				configapi.QoSRegionTypeDedicatedNumaExclusive: {
 					{
-						Name:   string(workloadapis.ServiceSystemIndicatorNameCPI),
+						Name:   workloadapis.ServiceSystemIndicatorNameCPI,
 						Target: 1.4,
 					},
 				},
@@ -1270,20 +1271,20 @@ func TestGetIsolatedContainerRegions(t *testing.T) {
 	conf, _ := options.NewOptions().Config()
 
 	r1 := &region.QoSRegionShare{
-		QoSRegionBase: region.NewQoSRegionBase("r1", "", types.QoSRegionTypeIsolation,
+		QoSRegionBase: region.NewQoSRegionBase("r1", "", configapi.QoSRegionTypeIsolation,
 			conf, struct{}{}, false, nil, nil, nil),
 	}
 	_ = r1.AddContainer(c1_1)
 	_ = r1.AddContainer(c1_2)
 
 	r2 := &region.QoSRegionShare{
-		QoSRegionBase: region.NewQoSRegionBase("r2", "", types.QoSRegionTypeShare,
+		QoSRegionBase: region.NewQoSRegionBase("r2", "", configapi.QoSRegionTypeShare,
 			conf, struct{}{}, false, nil, nil, nil),
 	}
 	_ = r2.AddContainer(c2)
 
 	r3 := &region.QoSRegionShare{
-		QoSRegionBase: region.NewQoSRegionBase("r3", "", types.QoSRegionTypeDedicatedNumaExclusive,
+		QoSRegionBase: region.NewQoSRegionBase("r3", "", configapi.QoSRegionTypeDedicatedNumaExclusive,
 			conf, struct{}{}, false, nil, nil, nil),
 	}
 	_ = r3.AddContainer(c3_1)
@@ -1298,7 +1299,7 @@ func TestGetIsolatedContainerRegions(t *testing.T) {
 	}
 
 	f := func(c *types.ContainerInfo) []string {
-		rs, err := advisor.getContainerRegions(c, types.QoSRegionTypeIsolation)
+		rs, err := advisor.getContainerRegions(c, configapi.QoSRegionTypeIsolation)
 		assert.NoError(t, err)
 		var res []string
 		for _, r := range rs {

@@ -17,11 +17,13 @@ limitations under the License.
 package region
 
 import (
+	"encoding/json"
 	"math"
 
 	"k8s.io/apimachinery/pkg/util/uuid"
 	"k8s.io/klog/v2"
 
+	configapi "github.com/kubewharf/katalyst-api/pkg/apis/config/v1alpha1"
 	"github.com/kubewharf/katalyst-api/pkg/apis/workload/v1alpha1"
 	"github.com/kubewharf/katalyst-core/pkg/agent/qrm-plugins/cpu/dynamicpolicy/state"
 	"github.com/kubewharf/katalyst-core/pkg/agent/sysadvisor/metacache"
@@ -52,7 +54,7 @@ func NewQoSRegionShare(ci *types.ContainerInfo, conf *config.Configuration, extr
 ) QoSRegion {
 	regionName := getRegionNameFromMetaCache(ci, numaID, metaReader)
 	if regionName == "" {
-		regionName = string(types.QoSRegionTypeShare) + types.RegionNameSeparator + string(uuid.NewUUID())
+		regionName = string(configapi.QoSRegionTypeShare) + types.RegionNameSeparator + string(uuid.NewUUID())
 	}
 
 	// Why OriginOwnerPoolName ?
@@ -62,7 +64,7 @@ func NewQoSRegionShare(ci *types.ContainerInfo, conf *config.Configuration, extr
 	//	When put isolation pods back to share pool, advisor should create a new share region with OriginOwnerPoolName (OriginOwnerPoolName != OwnerPoolName).
 	isNumaBinding := numaID != state.FakedNUMAID
 	r := &QoSRegionShare{
-		QoSRegionBase: NewQoSRegionBase(regionName, ci.OriginOwnerPoolName, types.QoSRegionTypeShare, conf, extraConf, isNumaBinding, metaReader, metaServer, emitter),
+		QoSRegionBase: NewQoSRegionBase(regionName, ci.OriginOwnerPoolName, configapi.QoSRegionTypeShare, conf, extraConf, isNumaBinding, metaReader, metaServer, emitter),
 	}
 
 	if isNumaBinding {
@@ -130,7 +132,8 @@ func (r *QoSRegionShare) updateProvisionPolicy() {
 // restrictProvisionControlKnob is to restrict provision control knob by reference policy
 func (r *QoSRegionShare) restrictProvisionControlKnob(originControlKnob map[types.CPUProvisionPolicyName]types.ControlKnob) map[types.CPUProvisionPolicyName]types.ControlKnob {
 	controlKnobConstraints := r.conf.GetDynamicConfiguration().ControlKnobConstraints
-	klog.Infof("controlKnobConstraints: %+v", controlKnobConstraints)
+	s, _ := json.Marshal(controlKnobConstraints)
+	klog.Infof("controlKnobConstraints: %+v", string(s))
 
 	restrictedControlKnob := make(map[types.CPUProvisionPolicyName]types.ControlKnob)
 	for policyName, controlKnob := range originControlKnob {
@@ -152,18 +155,20 @@ func (r *QoSRegionShare) restrictProvisionControlKnob(originControlKnob map[type
 			}
 
 			min, max := refKnobValue.Value, refKnobValue.Value
-			if maxUpperGap, ok := controlKnobConstraints.RestrictControlKnobMaxUpperGap[string(controlKnobName)]; ok {
-				max = math.Max(max, refKnobValue.Value+maxUpperGap)
-			}
-			if maxLowerGap, ok := controlKnobConstraints.RestrictControlKnobMaxLowerGap[string(controlKnobName)]; ok {
-				min = math.Min(min, refKnobValue.Value-maxLowerGap)
-			}
 
-			if maxGapUpperRatio, ok := controlKnobConstraints.RestrictControlKnobMaxUpperGapRatio[string(controlKnobName)]; ok {
-				max = math.Max(max, refKnobValue.Value*(1+maxGapUpperRatio))
-			}
-			if maxGapLowerRatio, ok := controlKnobConstraints.RestrictControlKnobMaxLowerGapRatio[string(controlKnobName)]; ok {
-				min = math.Min(min, refKnobValue.Value*(1-maxGapLowerRatio))
+			if constraints, ok := controlKnobConstraints[controlKnobName]; ok {
+				if constraints.RestrictControlKnobMaxUpperGap != nil {
+					max = math.Max(max, refKnobValue.Value+*constraints.RestrictControlKnobMaxUpperGap)
+				}
+				if constraints.RestrictControlKnobMaxLowerGap != nil {
+					min = math.Min(min, refKnobValue.Value-*constraints.RestrictControlKnobMaxLowerGap)
+				}
+				if constraints.RestrictControlKnobMaxUpperGapRatio != nil {
+					max = math.Max(max, refKnobValue.Value*(1+*constraints.RestrictControlKnobMaxUpperGapRatio))
+				}
+				if constraints.RestrictControlKnobMaxLowerGapRatio != nil {
+					min = math.Min(min, refKnobValue.Value*(1-*constraints.RestrictControlKnobMaxLowerGapRatio))
+				}
 			}
 
 			restrictedKnobValue := rawKnobValue
@@ -177,8 +182,8 @@ func (r *QoSRegionShare) restrictProvisionControlKnob(originControlKnob map[type
 				reason = "below"
 			}
 			if restrictedKnobValue != rawKnobValue {
-				klog.Infof("[qosaware-cpu] restrict control knob %v for policy %v by policy %v from %.2f to %.2f, reason: %v",
-					controlKnobName, policyName, refPolicyName, rawKnobValue.Value, restrictedKnobValue.Value, reason)
+				klog.Infof("[qosaware-cpu] restrict control knob %v for policy %v by policy %v from %.2f to %.2f, reason: %v, refKnobValue: %v",
+					controlKnobName, policyName, refPolicyName, rawKnobValue.Value, restrictedKnobValue.Value, reason, refKnobValue.Value)
 			}
 			restrictedControlKnob[policyName][controlKnobName] = restrictedKnobValue
 			_ = r.emitter.StoreInt64(metricCPUProvisionControlKnobRestricted, int64(r.conf.QoSAwarePluginConfiguration.SyncPeriod.Seconds()), metrics.MetricTypeNameCount, []metrics.MetricTag{
@@ -195,7 +200,7 @@ func (r *QoSRegionShare) restrictProvisionControlKnob(originControlKnob map[type
 func (r *QoSRegionShare) getControlKnobs() types.ControlKnob {
 	regionInfo, ok := r.metaReader.GetRegionInfo(r.name)
 	if ok {
-		if _, existed := regionInfo.ControlKnobMap[types.ControlKnobNonReclaimedCPURequirement]; existed {
+		if _, existed := regionInfo.ControlKnobMap[configapi.ControlKnobNonReclaimedCPURequirement]; existed {
 			return regionInfo.ControlKnobMap
 		}
 	}
@@ -210,7 +215,7 @@ func (r *QoSRegionShare) getControlKnobs() types.ControlKnob {
 	}
 
 	return types.ControlKnob{
-		types.ControlKnobNonReclaimedCPURequirement: {
+		configapi.ControlKnobNonReclaimedCPURequirement: {
 			Value:  float64(poolSize),
 			Action: types.ControlKnobActionNone,
 		},

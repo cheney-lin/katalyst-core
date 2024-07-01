@@ -23,6 +23,7 @@ import (
 	"k8s.io/apimachinery/pkg/api/resource"
 	"k8s.io/klog/v2"
 
+	configapi "github.com/kubewharf/katalyst-api/pkg/apis/config/v1alpha1"
 	"github.com/kubewharf/katalyst-core/pkg/agent/qrm-plugins/cpu/dynamicpolicy/state"
 	"github.com/kubewharf/katalyst-core/pkg/agent/sysadvisor/metacache"
 	"github.com/kubewharf/katalyst-core/pkg/agent/sysadvisor/plugin/qosaware/resource/cpu/region"
@@ -86,7 +87,7 @@ func (ha *HeadroomAssemblerCommon) GetHeadroom() (resource.Quantity, error) {
 
 	// sum up dedicated region headroom
 	for _, r := range *ha.regionMap {
-		if r.Type() == types.QoSRegionTypeDedicatedNumaExclusive {
+		if r.Type() == configapi.QoSRegionTypeDedicatedNumaExclusive {
 			regionInfo, ok := ha.metaReader.GetRegionInfo(r.Name())
 			if !ok || regionInfo == nil || regionInfo.Headroom < 0 {
 				return resource.Quantity{}, fmt.Errorf("failed to get headroom for %v", r.Name())

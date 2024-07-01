@@ -26,6 +26,7 @@ import (
 	"k8s.io/apimachinery/pkg/api/errors"
 	"k8s.io/klog/v2"
 
+	"github.com/kubewharf/katalyst-api/pkg/apis/config/v1alpha1"
 	"github.com/kubewharf/katalyst-api/pkg/consts"
 	"github.com/kubewharf/katalyst-core/pkg/agent/sysadvisor/metacache"
 	"github.com/kubewharf/katalyst-core/pkg/agent/sysadvisor/plugin/qosaware/resource/cpu/region/headroompolicy"
@@ -75,13 +76,13 @@ type internalHeadroomPolicy struct {
 
 type provisionPolicyResult struct {
 	essentials                 types.ResourceEssentials
-	controlKnobValueRegulators map[types.ControlKnobName]regulator.Regulator
+	controlKnobValueRegulators map[v1alpha1.ControlKnobName]regulator.Regulator
 }
 
 func newProvisionPolicyResult(essentials types.ResourceEssentials) *provisionPolicyResult {
 	return &provisionPolicyResult{
 		essentials:                 essentials,
-		controlKnobValueRegulators: make(map[types.ControlKnobName]regulator.Regulator),
+		controlKnobValueRegulators: make(map[v1alpha1.ControlKnobName]regulator.Regulator),
 	}
 }
 
@@ -122,10 +123,10 @@ func (r *provisionPolicyResult) regulateControlKnob(currentControlKnob types.Con
 }
 
 // newRegulator new regulator according to the control knob name
-func (r *provisionPolicyResult) newRegulator(name types.ControlKnobName) regulator.Regulator {
+func (r *provisionPolicyResult) newRegulator(name v1alpha1.ControlKnobName) regulator.Regulator {
 	switch name {
 	// only non-reclaimed cpu size need regulate now
-	case types.ControlKnobNonReclaimedCPURequirement:
+	case v1alpha1.ControlKnobNonReclaimedCPURequirement:
 		return regulator.NewCPURegulator()
 	default:
 		return regulator.NewDummyRegulator()
@@ -139,7 +140,6 @@ func (r *provisionPolicyResult) getControlKnob() types.ControlKnob {
 		controlKnob[name] = types.ControlKnobValue{
 			Value:  float64(r.GetRequirement()),
 			Action: types.ControlKnobActionNone,
-			Reason: r.GetReason(),
 		}
 	}
 	return controlKnob
@@ -151,7 +151,7 @@ type QoSRegionBase struct {
 
 	name          string
 	ownerPoolName string
-	regionType    types.QoSRegionType
+	regionType    v1alpha1.QoSRegionType
 	regionStatus  types.RegionStatus
 
 	types.ResourceEssentials
@@ -199,7 +199,7 @@ type QoSRegionBase struct {
 }
 
 // NewQoSRegionBase returns a base qos region instance with common region methods
-func NewQoSRegionBase(name string, ownerPoolName string, regionType types.QoSRegionType, conf *config.Configuration, extraConf interface{}, isNumaBinding bool,
+func NewQoSRegionBase(name string, ownerPoolName string, regionType v1alpha1.QoSRegionType, conf *config.Configuration, extraConf interface{}, isNumaBinding bool,
 	metaReader metacache.MetaReader, metaServer *metaserver.MetaServer, emitter metrics.MetricEmitter,
 ) *QoSRegionBase {
 	r := &QoSRegionBase{
@@ -237,7 +237,7 @@ func NewQoSRegionBase(name string, ownerPoolName string, regionType types.QoSReg
 	// it only takes effect when updating target indicators,
 	// if there are more code positions depending on it,
 	// we should consider provide a dummy borwein controller to avoid redundant judgement.
-	if r.conf.GetDynamicConfiguration().PolicyRama.EnableBorwein {
+	if r.conf.PolicyRama.EnableBorwein {
 		r.borweinController = borweinctrl.NewBorweinController(name, regionType, ownerPoolName, conf, metaReader, emitter)
 	}
 	r.enableReclaim = r.EnableReclaim
@@ -254,7 +254,7 @@ func (r *QoSRegionBase) Name() string {
 // TryUpdateProvision is implemented in specific region
 func (r *QoSRegionBase) TryUpdateProvision() {}
 
-func (r *QoSRegionBase) Type() types.QoSRegionType {
+func (r *QoSRegionBase) Type() v1alpha1.QoSRegionType {
 	return r.regionType
 }
 
@@ -381,7 +381,7 @@ func (r *QoSRegionBase) GetProvision() (types.ControlKnob, error) {
 		if r.provisionPolicyNameInUse != oldProvisionPolicyNameInUse {
 			klog.Infof("[qosaware-cpu] region: %v provision policy switch from %v to %v",
 				r.Name(), oldProvisionPolicyNameInUse, r.provisionPolicyNameInUse)
-			if r.conf.GetDynamicConfiguration().PolicyRama.EnableBorwein {
+			if r.conf.PolicyRama.EnableBorwein {
 				r.borweinController.ResetIndicatorOffsets()
 			}
 		}
@@ -485,9 +485,9 @@ func getRegionNameFromMetaCache(ci *types.ContainerInfo, numaID int, metaReader 
 				// - current container is isolated and the region is for isolation-type
 				// - current container isn't isolated and the region is for share-type
 
-				if !ci.Isolated && regionInfo.RegionType == types.QoSRegionTypeShare {
+				if !ci.Isolated && regionInfo.RegionType == v1alpha1.QoSRegionTypeShare {
 					return regionName
-				} else if ci.Isolated && regionInfo.RegionType == types.QoSRegionTypeIsolation {
+				} else if ci.Isolated && regionInfo.RegionType == v1alpha1.QoSRegionTypeIsolation {
 					return regionName
 				}
 			}
@@ -495,7 +495,7 @@ func getRegionNameFromMetaCache(ci *types.ContainerInfo, numaID int, metaReader 
 	} else if ci.IsDedicatedNumaBinding() {
 		for regionName := range ci.RegionNames {
 			regionInfo, ok := metaReader.GetRegionInfo(regionName)
-			if ok && regionInfo.RegionType == types.QoSRegionTypeDedicatedNumaExclusive {
+			if ok && regionInfo.RegionType == v1alpha1.QoSRegionTypeDedicatedNumaExclusive {
 				regionNUMAs := regionInfo.BindingNumas.ToSliceInt()
 				if len(regionNUMAs) == 1 && regionNUMAs[0] == numaID {
 					return regionName
@@ -586,7 +586,7 @@ func (r *QoSRegionBase) getProvisionControlKnob() map[types.CPUProvisionPolicyNa
 			}...)
 
 			klog.InfoS("[qosaware-cpu] get raw control knob", "region", r.name, "policy", internal.name,
-				"knob", name, "action", value.Action, "value", value.Value, "reason", value.Reason)
+				"knob", name, "action", value.Action, "value", value.Value)
 		}
 	}
 
@@ -645,7 +645,7 @@ func (r *QoSRegionBase) regulateProvisionControlKnob(originControlKnob map[types
 				{Key: metricTagKeyControlKnobAction, Val: string(value.Action)},
 			}...)
 			klog.InfoS("[qosaware-cpu] get regulated control knob", "region", r.name, "policy", policy, "knob", knob,
-				"action", value.Action, "value", value.Value, "reason", value.Reason)
+				"action", value.Action, "value", value.Value)
 		}
 	}
 }
@@ -653,7 +653,7 @@ func (r *QoSRegionBase) regulateProvisionControlKnob(originControlKnob map[types
 // getIndicators returns indicator targets from spd and current by region specific indicator getters
 func (r *QoSRegionBase) getIndicators() (types.Indicator, error) {
 	ctx := context.Background()
-	indicatorTargetConfig, ok := r.conf.GetDynamicConfiguration().RegionIndicatorTargetConfiguration[string(r.regionType)]
+	indicatorTargetConfig, ok := r.conf.GetDynamicConfiguration().RegionIndicatorTargetConfiguration[r.regionType]
 	if !ok {
 		return nil, fmt.Errorf("get %v indicators failed", r.regionType)
 	}
@@ -664,7 +664,7 @@ func (r *QoSRegionBase) getIndicators() (types.Indicator, error) {
 	for _, indicator := range indicatorTargetConfig {
 		indicatorName := indicator.Name
 		defaultTarget := indicator.Target
-		indicatorCurrentGetter, ok := r.indicatorCurrentGetters[indicatorName]
+		indicatorCurrentGetter, ok := r.indicatorCurrentGetters[string(indicatorName)]
 		if !ok {
 			general.InfoS("failed to find indicatorCurrentGetter", "indicatorName", indicatorName)
 			continue
@@ -679,7 +679,7 @@ func (r *QoSRegionBase) getIndicators() (types.Indicator, error) {
 		if len(r.podSet) > 0 {
 			minTarget = math.MaxFloat64
 			for podUID := range r.podSet {
-				indicatorTarget, err := r.getPodIndicatorTarget(ctx, podUID, indicatorName, defaultTarget)
+				indicatorTarget, err := r.getPodIndicatorTarget(ctx, podUID, string(indicatorName), defaultTarget)
 				if err != nil {
 					return nil, err
 				}
@@ -698,9 +698,9 @@ func (r *QoSRegionBase) getIndicators() (types.Indicator, error) {
 			continue
 		}
 
-		indicators[indicatorName] = indicatorValue
+		indicators[string(indicatorName)] = indicatorValue
 	}
-	if r.conf.GetDynamicConfiguration().PolicyRama.EnableBorwein && r.provisionPolicyNameInUse == types.CPUProvisionPolicyRama {
+	if r.conf.PolicyRama.EnableBorwein && r.provisionPolicyNameInUse == types.CPUProvisionPolicyRama {
 		general.Infof("try to update indicators by borwein model")
 		return r.borweinController.GetUpdatedIndicators(indicators, r.podSet), nil
 	} else {
@@ -761,7 +761,7 @@ func (r *QoSRegionBase) updateBoundType(overshoot bool) {
 		general.Infof("region %v is throttled", r.name)
 		boundType = types.BoundUpper
 	} else if r.ControlEssentials.ControlKnobs != nil {
-		if v, ok := r.ControlEssentials.ControlKnobs[types.ControlKnobNonReclaimedCPURequirement]; ok {
+		if v, ok := r.ControlEssentials.ControlKnobs[v1alpha1.ControlKnobNonReclaimedCPURequirement]; ok {
 			if v.Value <= r.ResourceEssentials.ResourceLowerBound {
 				boundType = types.BoundLower
 			} else {

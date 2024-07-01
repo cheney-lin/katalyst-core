@@ -21,7 +21,6 @@ import (
 
 	"k8s.io/klog/v2"
 
-	"github.com/kubewharf/katalyst-api/pkg/apis/config/v1alpha1"
 	"github.com/kubewharf/katalyst-core/pkg/agent/sysadvisor/types"
 	"github.com/kubewharf/katalyst-core/pkg/util/general"
 )
@@ -29,14 +28,14 @@ import (
 type PIDController struct {
 	variableName       string
 	resourceEssentials types.ResourceEssentials
-	params             v1alpha1.FirstOrderPIDParams
+	params             types.FirstOrderPIDParams
 	adjustmentTotal    float64
 	controlKnobPrev    float64
 	errorValue         float64
 	errorValuePrev     float64
 }
 
-func NewPIDController(variableName string, params v1alpha1.FirstOrderPIDParams) *PIDController {
+func NewPIDController(variableName string, params types.FirstOrderPIDParams) *PIDController {
 	return &PIDController{
 		variableName:    variableName,
 		params:          params,

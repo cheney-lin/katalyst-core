@@ -30,6 +30,7 @@ import (
 	"k8s.io/apimachinery/pkg/util/sets"
 	"k8s.io/klog/v2"
 
+	configapi "github.com/kubewharf/katalyst-api/pkg/apis/config/v1alpha1"
 	"github.com/kubewharf/katalyst-api/pkg/consts"
 	"github.com/kubewharf/katalyst-core/pkg/agent/qrm-plugins/cpu/dynamicpolicy/state"
 	"github.com/kubewharf/katalyst-core/pkg/agent/sysadvisor/metacache"
@@ -337,14 +338,14 @@ func (cra *cpuResourceAdvisor) checkIsolationSafety() bool {
 	shareAndIsolationPoolSize := 0
 	nonBindingNumas := cra.metaServer.CPUDetails.NUMANodes()
 	for _, r := range cra.regionMap {
-		if r.Type() == types.QoSRegionTypeShare {
+		if r.Type() == configapi.QoSRegionTypeShare {
 			controlKnob, err := r.GetProvision()
 			if err != nil {
 				klog.Errorf("[qosaware-cpu] get controlKnob for %v err: %v", r.Name(), err)
 				return false
 			}
-			shareAndIsolationPoolSize += int(controlKnob[types.ControlKnobNonReclaimedCPURequirement].Value)
-		} else if r.Type() == types.QoSRegionTypeIsolation {
+			shareAndIsolationPoolSize += int(controlKnob[configapi.ControlKnobNonReclaimedCPURequirement].Value)
+		} else if r.Type() == configapi.QoSRegionTypeIsolation {
 			pods := r.GetPods()
 			cra.metaCache.RangeContainer(func(podUID string, _ string, containerInfo *types.ContainerInfo) bool {
 				if _, ok := pods[podUID]; ok {
@@ -352,7 +353,7 @@ func (cra *cpuResourceAdvisor) checkIsolationSafety() bool {
 				}
 				return true
 			})
-		} else if r.Type() == types.QoSRegionTypeDedicatedNumaExclusive {
+		} else if r.Type() == configapi.QoSRegionTypeDedicatedNumaExclusive {
 			nonBindingNumas = nonBindingNumas.Difference(r.GetBindingNumas())
 		}
 	}
@@ -490,7 +491,7 @@ func (cra *cpuResourceAdvisor) assignShareContainerToRegions(ci *types.Container
 			}
 		} else {
 			// if there already exists an isolation region for this pod, just reuse it
-			regions, err := cra.getContainerRegions(ci, types.QoSRegionTypeIsolation)
+			regions, err := cra.getContainerRegions(ci, configapi.QoSRegionTypeIsolation)
 			if err != nil {
 				return nil, err
 			} else if len(regions) > 0 {
@@ -524,7 +525,7 @@ func (cra *cpuResourceAdvisor) assignShareContainerToRegions(ci *types.Container
 
 func (cra *cpuResourceAdvisor) assignDedicatedContainerToRegions(ci *types.ContainerInfo) ([]region.QoSRegion, error) {
 	// assign dedicated cores numa exclusive containers. focus on container.
-	regions, err := cra.getContainerRegions(ci, types.QoSRegionTypeDedicatedNumaExclusive)
+	regions, err := cra.getContainerRegions(ci, configapi.QoSRegionTypeDedicatedNumaExclusive)
 	if err != nil {
 		return nil, err
 	} else if len(regions) > 0 {
@@ -563,7 +564,7 @@ func (cra *cpuResourceAdvisor) updateAdvisorEssentials() {
 			continue
 		}
 		// ignore isolation region
-		if r.Type() == types.QoSRegionTypeDedicatedNumaExclusive || r.Type() == types.QoSRegionTypeShare {
+		if r.Type() == configapi.QoSRegionTypeDedicatedNumaExclusive || r.Type() == configapi.QoSRegionTypeShare {
 			cra.nonBindingNumas = cra.nonBindingNumas.Difference(r.GetBindingNumas())
 		}
 	}
@@ -575,7 +576,7 @@ func (cra *cpuResourceAdvisor) updateAdvisorEssentials() {
 
 	for _, r := range cra.regionMap {
 		// set binding numas for non numa binding regions
-		if !r.IsNumaBinding() && r.Type() == types.QoSRegionTypeShare {
+		if !r.IsNumaBinding() && r.Type() == configapi.QoSRegionTypeShare {
 			r.SetBindingNumas(cra.nonBindingNumas)
 		}
 

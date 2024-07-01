@@ -29,6 +29,7 @@ import (
 	"k8s.io/apimachinery/pkg/api/resource"
 	"k8s.io/apimachinery/pkg/util/sets"
 
+	configapi "github.com/kubewharf/katalyst-api/pkg/apis/config/v1alpha1"
 	"github.com/kubewharf/katalyst-api/pkg/apis/node/v1alpha1"
 	"github.com/kubewharf/katalyst-api/pkg/consts"
 	"github.com/kubewharf/katalyst-core/cmd/katalyst-agent/app/options"
@@ -116,7 +117,7 @@ func TestHeadroomAssemblerCommon_GetHeadroom(t *testing.T) {
 			fields: fields{
 				entries: map[string]*types.RegionInfo{
 					"share-0": {
-						RegionType: types.QoSRegionTypeShare,
+						RegionType: configapi.QoSRegionTypeShare,
 					},
 				},
 				cnr: &v1alpha1.CustomNodeResource{
@@ -165,7 +166,7 @@ func TestHeadroomAssemblerCommon_GetHeadroom(t *testing.T) {
 						RegionName:    "share-0",
 						OwnerPoolName: "share-0",
 						BindingNumas:  machine.NewCPUSet(0, 1),
-						RegionType:    types.QoSRegionTypeShare,
+						RegionType:    configapi.QoSRegionTypeShare,
 						Pods: map[string]sets.String{
 							"pod1": sets.NewString("container1"),
 						},
@@ -223,7 +224,7 @@ func TestHeadroomAssemblerCommon_GetHeadroom(t *testing.T) {
 			fields: fields{
 				entries: map[string]*types.RegionInfo{
 					"share-0": {
-						RegionType: types.QoSRegionTypeShare,
+						RegionType: configapi.QoSRegionTypeShare,
 					},
 				},
 				cnr: &v1alpha1.CustomNodeResource{
@@ -268,7 +269,7 @@ func TestHeadroomAssemblerCommon_GetHeadroom(t *testing.T) {
 			fields: fields{
 				entries: map[string]*types.RegionInfo{
 					"share-0": {
-						RegionType: types.QoSRegionTypeShare,
+						RegionType: configapi.QoSRegionTypeShare,
 					},
 				},
 				cnr: &v1alpha1.CustomNodeResource{
@@ -313,7 +314,7 @@ func TestHeadroomAssemblerCommon_GetHeadroom(t *testing.T) {
 			fields: fields{
 				entries: map[string]*types.RegionInfo{
 					"share-0": {
-						RegionType: types.QoSRegionTypeShare,
+						RegionType: configapi.QoSRegionTypeShare,
 					},
 				},
 				cnr: &v1alpha1.CustomNodeResource{
@@ -358,7 +359,7 @@ func TestHeadroomAssemblerCommon_GetHeadroom(t *testing.T) {
 			fields: fields{
 				entries: map[string]*types.RegionInfo{
 					"share-0": {
-						RegionType: types.QoSRegionTypeShare,
+						RegionType: configapi.QoSRegionTypeShare,
 					},
 				},
 				cnr: &v1alpha1.CustomNodeResource{
@@ -428,7 +429,7 @@ func TestHeadroomAssemblerCommon_GetHeadroom(t *testing.T) {
 			metaServer := generateTestMetaServer(t, tt.fields.cnr, tt.fields.podList, metricsFetcher)
 
 			if tt.fields.regions == nil {
-				shareRegion := region.NewQoSRegionBase("share", "share", types.QoSRegionTypeShare, conf, nil, false, metaCache, metaServer, metrics.DummyMetrics{})
+				shareRegion := region.NewQoSRegionBase("share", "share", configapi.QoSRegionTypeShare, conf, nil, false, metaCache, metaServer, metrics.DummyMetrics{})
 				shareRegion.SetBindingNumas(machine.NewCPUSet(0, 1))
 				tt.fields.regions = map[string]region.QoSRegion{
 					"share": shareRegion,

@@ -25,8 +25,10 @@ import (
 	"github.com/stretchr/testify/require"
 	"k8s.io/apimachinery/pkg/runtime"
 	"k8s.io/apimachinery/pkg/util/sets"
+	"k8s.io/utils/pointer"
 
 	"github.com/kubewharf/katalyst-api/pkg/apis/config/v1alpha1"
+	configapi "github.com/kubewharf/katalyst-api/pkg/apis/config/v1alpha1"
 	"github.com/kubewharf/katalyst-api/pkg/consts"
 	katalyst_base "github.com/kubewharf/katalyst-core/cmd/base"
 	"github.com/kubewharf/katalyst-core/cmd/katalyst-agent/app/options"
@@ -58,7 +60,7 @@ func TestGetRegionNameFromMetaCache(t *testing.T) {
 			},
 			region: &types.RegionInfo{
 				RegionName: "share-t",
-				RegionType: types.QoSRegionTypeShare,
+				RegionType: configapi.QoSRegionTypeShare,
 			},
 			regionName: "share-t",
 		},
@@ -73,7 +75,7 @@ func TestGetRegionNameFromMetaCache(t *testing.T) {
 			},
 			region: &types.RegionInfo{
 				RegionName:   "dedicated-t",
-				RegionType:   types.QoSRegionTypeDedicatedNumaExclusive,
+				RegionType:   configapi.QoSRegionTypeDedicatedNumaExclusive,
 				BindingNumas: machine.NewCPUSet(1),
 			},
 			numaID:     1,
@@ -90,7 +92,7 @@ func TestGetRegionNameFromMetaCache(t *testing.T) {
 			},
 			region: &types.RegionInfo{
 				RegionName:   "dedicated-t",
-				RegionType:   types.QoSRegionTypeDedicatedNumaExclusive,
+				RegionType:   configapi.QoSRegionTypeDedicatedNumaExclusive,
 				BindingNumas: machine.NewCPUSet(1),
 			},
 			numaID:     2,
@@ -105,7 +107,7 @@ func TestGetRegionNameFromMetaCache(t *testing.T) {
 			},
 			region: &types.RegionInfo{
 				RegionName: "isolation-t",
-				RegionType: types.QoSRegionTypeIsolation,
+				RegionType: configapi.QoSRegionTypeIsolation,
 			},
 			regionName: "isolation-t",
 		},
@@ -118,7 +120,7 @@ func TestGetRegionNameFromMetaCache(t *testing.T) {
 			},
 			region: &types.RegionInfo{
 				RegionName: "isolation-t",
-				RegionType: types.QoSRegionTypeShare,
+				RegionType: configapi.QoSRegionTypeShare,
 			},
 			regionName: "",
 		},
@@ -206,24 +208,30 @@ func TestRestrictProvisionControlKnob(t *testing.T) {
 
 	tests := []struct {
 		name                   string
-		controlKnobConstraints *v1alpha1.ControlKnobConstraints
+		controlKnobConstraints map[v1alpha1.ControlKnobName]v1alpha1.ControlKnobConstraints
 		originControlKnob      map[types.CPUProvisionPolicyName]types.ControlKnob
 		wantControlKnob        map[types.CPUProvisionPolicyName]types.ControlKnob
 	}{
 		{
 			name: "below ref",
-			controlKnobConstraints: &v1alpha1.ControlKnobConstraints{
-				RestrictControlKnobMaxUpperGap: map[string]float64{"c1": 4},
-				RestrictControlKnobMaxLowerGap: map[string]float64{"c1": 1},
+			controlKnobConstraints: map[configapi.ControlKnobName]configapi.ControlKnobConstraints{
+				"c1": {
+					Name:                           "c1",
+					RestrictControlKnobMaxUpperGap: pointer.Float64(4),
+					RestrictControlKnobMaxLowerGap: pointer.Float64(1),
+				},
 			},
 			originControlKnob: map[types.CPUProvisionPolicyName]types.ControlKnob{"p1": {"c1": types.ControlKnobValue{Value: 8}}, "p2": {"c1": types.ControlKnobValue{Value: 10}}},
 			wantControlKnob:   map[types.CPUProvisionPolicyName]types.ControlKnob{"p1": {"c1": types.ControlKnobValue{Value: 9}}, "p2": {"c1": types.ControlKnobValue{Value: 10}}},
 		},
 		{
 			name: "upper ref",
-			controlKnobConstraints: &v1alpha1.ControlKnobConstraints{
-				RestrictControlKnobMaxUpperGap: map[string]float64{"c1": 4},
-				RestrictControlKnobMaxLowerGap: map[string]float64{"c1": 1},
+			controlKnobConstraints: map[configapi.ControlKnobName]configapi.ControlKnobConstraints{
+				"c1": {
+					Name:                           "c1",
+					RestrictControlKnobMaxUpperGap: pointer.Float64(4),
+					RestrictControlKnobMaxLowerGap: pointer.Float64(1),
+				},
 			},
 			originControlKnob: map[types.CPUProvisionPolicyName]types.ControlKnob{"p1": {"c1": types.ControlKnobValue{Value: 16}}, "p2": {"c1": types.ControlKnobValue{Value: 10}}},
 			wantControlKnob:   map[types.CPUProvisionPolicyName]types.ControlKnob{"p1": {"c1": types.ControlKnobValue{Value: 14}}, "p2": {"c1": types.ControlKnobValue{Value: 10}}},

@@ -124,6 +124,6 @@ func TestQoSAwarePlugin(t *testing.T) {
 	ctx, cancel := context.WithCancel(context.Background())
 	go plugin.Run(ctx)
 
-	time.Sleep(time.Second)
+	time.Sleep(10 * time.Millisecond)
 	cancel()
 }

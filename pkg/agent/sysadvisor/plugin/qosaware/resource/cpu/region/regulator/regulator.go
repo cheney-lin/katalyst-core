@@ -41,8 +41,6 @@ type Regulator interface {
 
 	// GetRequirement returns the latest regulated requirement
 	GetRequirement() int
-
-	GetReason() string
 }
 
 // DummyRegulator always get requirement without regulate
@@ -69,10 +67,6 @@ func (d *DummyRegulator) Regulate(controlKnobValue types.ControlKnobValue) {
 
 func (d *DummyRegulator) GetRequirement() int {
 	return int(d.latestControlKnobValue.Value)
-}
-
-func (d *DummyRegulator) GetReason() string {
-	return d.latestControlKnobValue.Reason
 }
 
 // CPURegulator gets raw cpu requirement data from policy and generates real cpu requirement
@@ -133,16 +127,11 @@ func (c *CPURegulator) Regulate(controlKnobValue types.ControlKnobValue) {
 		c.latestControlKnobValue.Value = float64(cpuRequirementClamp)
 		c.latestRampDownTime = time.Now()
 	}
-	c.latestControlKnobValue.Reason = controlKnobValue.Reason
 }
 
 // GetRequirement returns the latest regulated cpu requirement
 func (c *CPURegulator) GetRequirement() int {
 	return int(c.latestControlKnobValue.Value)
-}
-
-func (c *CPURegulator) GetReason() string {
-	return c.latestControlKnobValue.Reason
 }
 
 func (c *CPURegulator) slowdown(cpuRequirement int) int {

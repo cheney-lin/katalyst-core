@@ -17,117 +17,52 @@ limitations under the License.
 package advisor
 
 import (
+	"k8s.io/utils/pointer"
+
 	"github.com/kubewharf/katalyst-api/pkg/apis/config/v1alpha1"
 	workloadv1alpha1 "github.com/kubewharf/katalyst-api/pkg/apis/workload/v1alpha1"
-	"github.com/kubewharf/katalyst-core/pkg/agent/sysadvisor/types"
 	"github.com/kubewharf/katalyst-core/pkg/config/agent/dynamic/crd"
 )
 
-func NewPolicyRamaConfiguration() *v1alpha1.PolicyRamaConfiguration {
-	return &v1alpha1.PolicyRamaConfiguration{
-		PIDParameters: map[string]v1alpha1.FirstOrderPIDParams{
-			string(workloadv1alpha1.ServiceSystemIndicatorNameCPUSchedWait): {
-				Kpp:                  5.0,
-				Kpn:                  0.9,
-				Kdp:                  0.0,
-				Kdn:                  0.0,
-				AdjustmentUpperBound: types.MaxRampUpStep,
-				AdjustmentLowerBound: -types.MaxRampDownStep,
-				DeadbandUpperPct:     0.05,
-				DeadbandLowerPct:     0.2,
-			},
-			string(workloadv1alpha1.ServiceSystemIndicatorNameCPUUsageRatio): {
-				Kpp:                  10.0,
-				Kpn:                  2.0,
-				Kdp:                  0.0,
-				Kdn:                  0.0,
-				AdjustmentUpperBound: types.MaxRampUpStep,
-				AdjustmentLowerBound: -types.MaxRampDownStep,
-				DeadbandUpperPct:     0.01,
-				DeadbandLowerPct:     0.06,
-			},
-			string(workloadv1alpha1.ServiceSystemIndicatorNameCPI): {
-				Kpp:                  10.0,
-				Kpn:                  2.0,
-				Kdp:                  0.0,
-				Kdn:                  0.0,
-				AdjustmentUpperBound: types.MaxRampUpStep,
-				AdjustmentLowerBound: -types.MaxRampDownStep,
-				DeadbandUpperPct:     0.0,
-				DeadbandLowerPct:     0.02,
-			},
-			string(workloadv1alpha1.ServiceSystemIndicatorNameMemoryAccessReadLatency): {
-				Kpp:                  5.0,
-				Kpn:                  0.9,
-				Kdp:                  0.0,
-				Kdn:                  0.0,
-				AdjustmentUpperBound: types.MaxRampUpStep,
-				AdjustmentLowerBound: -types.MaxRampDownStep,
-				DeadbandUpperPct:     0.05,
-				DeadbandLowerPct:     0.2,
-			},
-			string(workloadv1alpha1.ServiceSystemIndicatorNameMemoryAccessWriteLatency): {
-				Kpp:                  5.0,
-				Kpn:                  0.9,
-				Kdp:                  0.0,
-				Kdn:                  0.0,
-				AdjustmentUpperBound: types.MaxRampUpStep,
-				AdjustmentLowerBound: -types.MaxRampDownStep,
-				DeadbandUpperPct:     0.05,
-				DeadbandLowerPct:     0.2,
-			},
-			string(workloadv1alpha1.ServiceSystemIndicatorNameMemoryL3MissLatency): {
-				Kpp:                  5.0,
-				Kpn:                  0.9,
-				Kdp:                  0.0,
-				Kdn:                  0.0,
-				AdjustmentUpperBound: types.MaxRampUpStep,
-				AdjustmentLowerBound: -types.MaxRampDownStep,
-				DeadbandUpperPct:     0.05,
-				DeadbandLowerPct:     0.2,
-			},
+func NewControlKnobConstraints() map[v1alpha1.ControlKnobName]v1alpha1.ControlKnobConstraints {
+	return map[v1alpha1.ControlKnobName]v1alpha1.ControlKnobConstraints{
+		v1alpha1.ControlKnobNonReclaimedCPURequirement: {
+			Name:                                v1alpha1.ControlKnobNonReclaimedCPURequirement,
+			RestrictControlKnobMaxUpperGap:      pointer.Float64(20),
+			RestrictControlKnobMaxLowerGap:      pointer.Float64(20),
+			RestrictControlKnobMaxUpperGapRatio: pointer.Float64(0.3),
+			RestrictControlKnobMaxLowerGapRatio: pointer.Float64(0.3),
 		},
-	}
-}
-
-func NewControlKnobConstraints() *v1alpha1.ControlKnobConstraints {
-	return &v1alpha1.ControlKnobConstraints{
-		RestrictControlKnobMaxUpperGap:      map[string]float64{},
-		RestrictControlKnobMaxLowerGap:      map[string]float64{},
-		RestrictControlKnobMaxUpperGapRatio: map[string]float64{},
-		RestrictControlKnobMaxLowerGapRatio: map[string]float64{},
 	}
 }
 
 type CPUProvisionConfiguration struct {
 	AllowSharedCoresOverlapReclaimedCores bool
-	RegionIndicatorTargetConfiguration    map[string][]v1alpha1.IndicatorTargetConfiguration
-	PolicyRama                            *v1alpha1.PolicyRamaConfiguration
-	ControlKnobConstraints                *v1alpha1.ControlKnobConstraints
+	RegionIndicatorTargetConfiguration    map[v1alpha1.QoSRegionType][]v1alpha1.IndicatorTargetConfiguration
+	ControlKnobConstraints                map[v1alpha1.ControlKnobName]v1alpha1.ControlKnobConstraints
 }
 
 func NewCPUProvisionConfiguration() *CPUProvisionConfiguration {
 	return &CPUProvisionConfiguration{
 		AllowSharedCoresOverlapReclaimedCores: false,
-		RegionIndicatorTargetConfiguration: map[string][]v1alpha1.IndicatorTargetConfiguration{
-			string(types.QoSRegionTypeShare): {
+		RegionIndicatorTargetConfiguration: map[v1alpha1.QoSRegionType][]v1alpha1.IndicatorTargetConfiguration{
+			v1alpha1.QoSRegionTypeShare: {
 				{
-					Name:   string(workloadv1alpha1.ServiceSystemIndicatorNameCPUSchedWait),
+					Name:   workloadv1alpha1.ServiceSystemIndicatorNameCPUSchedWait,
 					Target: 460,
 				},
 				{
-					Name:   string(workloadv1alpha1.ServiceSystemIndicatorNameCPUUsageRatio),
+					Name:   workloadv1alpha1.ServiceSystemIndicatorNameCPUUsageRatio,
 					Target: 0.8,
 				},
 			},
-			string(types.QoSRegionTypeDedicatedNumaExclusive): {
+			v1alpha1.QoSRegionTypeDedicatedNumaExclusive: {
 				{
-					Name:   string(workloadv1alpha1.ServiceSystemIndicatorNameCPI),
+					Name:   workloadv1alpha1.ServiceSystemIndicatorNameCPI,
 					Target: 1.4,
 				},
 			},
 		},
-		PolicyRama:             NewPolicyRamaConfiguration(),
 		ControlKnobConstraints: NewControlKnobConstraints(),
 	}
 }
@@ -137,14 +72,11 @@ func (c *CPUProvisionConfiguration) ApplyConfiguration(conf *crd.DynamicConfigCR
 		aqc.Spec.Config.AdvisorConfig != nil &&
 		aqc.Spec.Config.AdvisorConfig.CPUAdvisorConfig != nil {
 		if aqc.Spec.Config.AdvisorConfig.CPUAdvisorConfig.CPUProvisionConfig != nil {
-			if len(aqc.Spec.Config.AdvisorConfig.CPUAdvisorConfig.CPUProvisionConfig.IndicatorTargets) != 0 {
-				c.RegionIndicatorTargetConfiguration = aqc.Spec.Config.AdvisorConfig.CPUAdvisorConfig.CPUProvisionConfig.IndicatorTargets
+			for _, regionIndicator := range aqc.Spec.Config.AdvisorConfig.CPUAdvisorConfig.CPUProvisionConfig.RegionIndicators {
+				c.RegionIndicatorTargetConfiguration[regionIndicator.RegionType] = regionIndicator.Targets
 			}
-			if aqc.Spec.Config.AdvisorConfig.CPUAdvisorConfig.CPUProvisionConfig.PolicyRama != nil {
-				c.PolicyRama = aqc.Spec.Config.AdvisorConfig.CPUAdvisorConfig.CPUProvisionConfig.PolicyRama
-			}
-			if aqc.Spec.Config.AdvisorConfig.CPUAdvisorConfig.CPUProvisionConfig.ControlKnobConstraints != nil {
-				c.ControlKnobConstraints = aqc.Spec.Config.AdvisorConfig.CPUAdvisorConfig.CPUProvisionConfig.ControlKnobConstraints
+			for _, constraint := range aqc.Spec.Config.AdvisorConfig.CPUAdvisorConfig.CPUProvisionConfig.Constraints {
+				c.ControlKnobConstraints[constraint.Name] = constraint
 			}
 		}
 		if aqc.Spec.Config.AdvisorConfig.CPUAdvisorConfig.AllowSharedCoresOverlapReclaimedCores != nil {

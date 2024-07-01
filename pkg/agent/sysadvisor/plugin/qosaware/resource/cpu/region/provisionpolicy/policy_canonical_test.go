@@ -34,6 +34,7 @@ import (
 	"github.com/kubewharf/katalyst-core/pkg/agent/sysadvisor/metacache"
 	"github.com/kubewharf/katalyst-core/pkg/agent/sysadvisor/types"
 	"github.com/kubewharf/katalyst-core/pkg/config"
+	provisionconfig "github.com/kubewharf/katalyst-core/pkg/config/agent/sysadvisor/qosaware/resource/cpu/provision"
 	"github.com/kubewharf/katalyst-core/pkg/consts"
 	"github.com/kubewharf/katalyst-core/pkg/metaserver"
 	"github.com/kubewharf/katalyst-core/pkg/metaserver/agent/metric"
@@ -54,13 +55,13 @@ func generateCanonicalTestConfiguration(t *testing.T, checkpointDir, stateFileDi
 	conf.MetaServerConfiguration.CheckpointManagerDir = checkpointDir
 	conf.CheckpointManagerDir = checkpointManagerDir
 
-	conf.GetDynamicConfiguration().RegionIndicatorTargetConfiguration = map[string][]v1alpha1.IndicatorTargetConfiguration{
-		string(types.QoSRegionTypeShare): {
+	conf.GetDynamicConfiguration().RegionIndicatorTargetConfiguration = map[v1alpha1.QoSRegionType][]v1alpha1.IndicatorTargetConfiguration{
+		v1alpha1.QoSRegionTypeShare: {
 			{
 				Name: consts.MetricCPUSchedwait,
 			},
 		},
-		string(types.QoSRegionTypeDedicatedNumaExclusive): {
+		v1alpha1.QoSRegionTypeDedicatedNumaExclusive: {
 			{
 				Name: consts.MetricCPUCPIContainer,
 			},
@@ -70,8 +71,8 @@ func generateCanonicalTestConfiguration(t *testing.T, checkpointDir, stateFileDi
 		},
 	}
 
-	conf.GetDynamicConfiguration().PolicyRama = &v1alpha1.PolicyRamaConfiguration{
-		PIDParameters: map[string]v1alpha1.FirstOrderPIDParams{
+	conf.PolicyRama = &provisionconfig.PolicyRamaConfiguration{
+		PIDParameters: map[string]types.FirstOrderPIDParams{
 			consts.MetricCPUSchedwait: {
 				Kpp:                  10.0,
 				Kpn:                  1.0,
@@ -188,7 +189,7 @@ func TestPolicyCanonical(t *testing.T) {
 			},
 			regionInfo: types.RegionInfo{
 				RegionName: "share-xxx",
-				RegionType: types.QoSRegionTypeShare,
+				RegionType: v1alpha1.QoSRegionTypeShare,
 			},
 			resourceEssentials: types.ResourceEssentials{
 				EnableReclaim:       true,
@@ -198,7 +199,7 @@ func TestPolicyCanonical(t *testing.T) {
 			},
 			controlEssentials: types.ControlEssentials{
 				ControlKnobs: types.ControlKnob{
-					types.ControlKnobNonReclaimedCPURequirement: {
+					v1alpha1.ControlKnobNonReclaimedCPURequirement: {
 						Value:  40,
 						Action: types.ControlKnobActionNone,
 					},
@@ -212,7 +213,7 @@ func TestPolicyCanonical(t *testing.T) {
 				ReclaimOverlap: false,
 			},
 			wantResult: types.ControlKnob{
-				types.ControlKnobNonReclaimedCPURequirement: {
+				v1alpha1.ControlKnobNonReclaimedCPURequirement: {
 					Value:  4,
 					Action: types.ControlKnobActionNone,
 				},
@@ -243,7 +244,7 @@ func TestPolicyCanonical(t *testing.T) {
 			},
 			regionInfo: types.RegionInfo{
 				RegionName: "share-xxx",
-				RegionType: types.QoSRegionTypeShare,
+				RegionType: v1alpha1.QoSRegionTypeShare,
 			},
 			resourceEssentials: types.ResourceEssentials{
 				EnableReclaim:       true,
@@ -253,7 +254,7 @@ func TestPolicyCanonical(t *testing.T) {
 			},
 			controlEssentials: types.ControlEssentials{
 				ControlKnobs: types.ControlKnob{
-					types.ControlKnobNonReclaimedCPURequirement: {
+					v1alpha1.ControlKnobNonReclaimedCPURequirement: {
 						Value:  40,
 						Action: types.ControlKnobActionNone,
 					},
@@ -267,7 +268,7 @@ func TestPolicyCanonical(t *testing.T) {
 				ReclaimOverlap: false,
 			},
 			wantResult: types.ControlKnob{
-				types.ControlKnobNonReclaimedCPURequirement: {
+				v1alpha1.ControlKnobNonReclaimedCPURequirement: {
 					Value:  2.5,
 					Action: types.ControlKnobActionNone,
 				},
@@ -292,7 +293,7 @@ func TestPolicyCanonical(t *testing.T) {
 			},
 			regionInfo: types.RegionInfo{
 				RegionName:   "dedicated-numa-exclusive-xxx",
-				RegionType:   types.QoSRegionTypeDedicatedNumaExclusive,
+				RegionType:   v1alpha1.QoSRegionTypeDedicatedNumaExclusive,
 				BindingNumas: machine.NewCPUSet(0),
 			},
 			resourceEssentials: types.ResourceEssentials{
@@ -303,7 +304,7 @@ func TestPolicyCanonical(t *testing.T) {
 			},
 			controlEssentials: types.ControlEssentials{
 				ControlKnobs: types.ControlKnob{
-					types.ControlKnobNonReclaimedCPURequirement: {
+					v1alpha1.ControlKnobNonReclaimedCPURequirement: {
 						Value:  40,
 						Action: types.ControlKnobActionNone,
 					},
@@ -321,7 +322,7 @@ func TestPolicyCanonical(t *testing.T) {
 				ReclaimOverlap: false,
 			},
 			wantResult: types.ControlKnob{
-				types.ControlKnobNonReclaimedCPURequirement: {
+				v1alpha1.ControlKnobNonReclaimedCPURequirement: {
 					Value:  4,
 					Action: types.ControlKnobActionNone,
 				},

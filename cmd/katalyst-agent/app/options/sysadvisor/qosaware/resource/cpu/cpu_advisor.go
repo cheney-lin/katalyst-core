@@ -22,7 +22,9 @@ import (
 	"github.com/spf13/pflag"
 	"k8s.io/apimachinery/pkg/util/errors"
 
+	"github.com/kubewharf/katalyst-api/pkg/apis/config/v1alpha1"
 	"github.com/kubewharf/katalyst-core/cmd/katalyst-agent/app/options/sysadvisor/qosaware/resource/cpu/headroom"
+	"github.com/kubewharf/katalyst-core/cmd/katalyst-agent/app/options/sysadvisor/qosaware/resource/cpu/provision"
 	"github.com/kubewharf/katalyst-core/cmd/katalyst-agent/app/options/sysadvisor/qosaware/resource/cpu/region"
 	"github.com/kubewharf/katalyst-core/pkg/agent/sysadvisor/types"
 	"github.com/kubewharf/katalyst-core/pkg/config/agent/sysadvisor/qosaware/resource/cpu"
@@ -36,6 +38,7 @@ type CPUAdvisorOptions struct {
 	CPUHeadroomAssembler       string
 
 	*headroom.CPUHeadroomPolicyOptions
+	*provision.CPUProvisionPolicyOptions
 	*region.CPURegionOptions
 	*CPUIsolationOptions
 }
@@ -44,20 +47,21 @@ type CPUAdvisorOptions struct {
 func NewCPUAdvisorOptions() *CPUAdvisorOptions {
 	return &CPUAdvisorOptions{
 		CPUProvisionPolicyPriority: map[string]string{
-			string(types.QoSRegionTypeShare):                  string(types.CPUProvisionPolicyCanonical),
-			string(types.QoSRegionTypeIsolation):              string(types.CPUProvisionPolicyCanonical),
-			string(types.QoSRegionTypeDedicatedNumaExclusive): string(types.CPUProvisionPolicyCanonical),
+			string(v1alpha1.QoSRegionTypeShare):                  string(types.CPUProvisionPolicyCanonical),
+			string(v1alpha1.QoSRegionTypeIsolation):              string(types.CPUProvisionPolicyCanonical),
+			string(v1alpha1.QoSRegionTypeDedicatedNumaExclusive): string(types.CPUProvisionPolicyCanonical),
 		},
 		CPUHeadroomPolicyPriority: map[string]string{
-			string(types.QoSRegionTypeShare):                  string(types.CPUHeadroomPolicyCanonical),
-			string(types.QoSRegionTypeIsolation):              string(types.CPUHeadroomPolicyCanonical),
-			string(types.QoSRegionTypeDedicatedNumaExclusive): string(types.CPUHeadroomPolicyCanonical),
+			string(v1alpha1.QoSRegionTypeShare):                  string(types.CPUHeadroomPolicyCanonical),
+			string(v1alpha1.QoSRegionTypeIsolation):              string(types.CPUHeadroomPolicyCanonical),
+			string(v1alpha1.QoSRegionTypeDedicatedNumaExclusive): string(types.CPUHeadroomPolicyCanonical),
 		},
-		CPUProvisionAssembler:    string(types.CPUProvisionAssemblerCommon),
-		CPUHeadroomAssembler:     string(types.CPUHeadroomAssemblerCommon),
-		CPUHeadroomPolicyOptions: headroom.NewCPUHeadroomPolicyOptions(),
-		CPURegionOptions:         region.NewCPURegionOptions(),
-		CPUIsolationOptions:      NewCPUIsolationOptions(),
+		CPUProvisionAssembler:     string(types.CPUProvisionAssemblerCommon),
+		CPUHeadroomAssembler:      string(types.CPUHeadroomAssemblerCommon),
+		CPUHeadroomPolicyOptions:  headroom.NewCPUHeadroomPolicyOptions(),
+		CPUProvisionPolicyOptions: provision.NewCPUProvisionPolicyOptions(),
+		CPURegionOptions:          region.NewCPURegionOptions(),
+		CPUIsolationOptions:       NewCPUIsolationOptions(),
 	}
 }
 
@@ -75,6 +79,7 @@ func (o *CPUAdvisorOptions) AddFlags(fs *pflag.FlagSet) {
 		"cpu headroom assembler for cpu advisor to generate node headroom from region headroom or node level policy")
 
 	o.CPUHeadroomPolicyOptions.AddFlags(fs)
+	o.CPUProvisionPolicyOptions.AddFlags(fs)
 	o.CPURegionOptions.AddFlags(fs)
 	o.CPUIsolationOptions.AddFlags(fs)
 }
@@ -84,14 +89,14 @@ func (o *CPUAdvisorOptions) ApplyTo(c *cpu.CPUAdvisorConfiguration) error {
 	for regionType, policies := range o.CPUProvisionPolicyPriority {
 		provisionPolicies := strings.Split(policies, "/")
 		for _, policyName := range provisionPolicies {
-			c.ProvisionPolicies[types.QoSRegionType(regionType)] = append(c.ProvisionPolicies[types.QoSRegionType(regionType)], types.CPUProvisionPolicyName(policyName))
+			c.ProvisionPolicies[v1alpha1.QoSRegionType(regionType)] = append(c.ProvisionPolicies[v1alpha1.QoSRegionType(regionType)], types.CPUProvisionPolicyName(policyName))
 		}
 	}
 
 	for regionType, policies := range o.CPUHeadroomPolicyPriority {
 		headroomPolicies := strings.Split(policies, "/")
 		for _, policyName := range headroomPolicies {
-			c.HeadroomPolicies[types.QoSRegionType(regionType)] = append(c.HeadroomPolicies[types.QoSRegionType(regionType)], types.CPUHeadroomPolicyName(policyName))
+			c.HeadroomPolicies[v1alpha1.QoSRegionType(regionType)] = append(c.HeadroomPolicies[v1alpha1.QoSRegionType(regionType)], types.CPUHeadroomPolicyName(policyName))
 		}
 	}
 
@@ -100,6 +105,7 @@ func (o *CPUAdvisorOptions) ApplyTo(c *cpu.CPUAdvisorConfiguration) error {
 
 	var errList []error
 	errList = append(errList, o.CPUHeadroomPolicyOptions.ApplyTo(c.CPUHeadroomPolicyConfiguration))
+	errList = append(errList, o.CPUProvisionPolicyOptions.ApplyTo(c.CPUProvisionPolicyConfiguration))
 	errList = append(errList, o.CPURegionOptions.ApplyTo(c.CPURegionConfiguration))
 	errList = append(errList, o.CPUIsolationOptions.ApplyTo(c.CPUIsolationConfiguration))
 	return errors.NewAggregate(errList)

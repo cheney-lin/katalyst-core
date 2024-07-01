@@ -355,7 +355,7 @@ func NewBorweinModelResultFetcher(fetcherName string, conf *config.Configuration
 ) (modelresultfetcher.ModelResultFetcher, error) {
 	if conf == nil || conf.BorweinConfiguration == nil {
 		return nil, fmt.Errorf("nil conf")
-	} else if !conf.GetDynamicConfiguration().PolicyRama.EnableBorweinModelResultFetcher {
+	} else if !conf.PolicyRama.EnableBorweinModelResultFetcher {
 		return nil, nil
 	} else if metaServer == nil {
 		return nil, fmt.Errorf("nil metaServer")
