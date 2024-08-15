@@ -171,6 +171,10 @@ func (m *GenericHeadroomManager) sync(_ context.Context) {
 		"reservedResourceForReport: %s", m.resourceName, originResultFromAdvisor.String(),
 		reportResult.String(), reclaimOptions.ReservedResourceForReport.String())
 
+	reportResult.Add(*reportResult)
+
+	klog.InfoS("hack", "reportResult", reportResult.String())
+
 	m.setLastReportResult(*reportResult)
 }
 

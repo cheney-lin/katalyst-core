@@ -21,6 +21,7 @@ import (
 	"strconv"
 
 	"go.uber.org/atomic"
+	"k8s.io/klog/v2"
 
 	"github.com/kubewharf/katalyst-core/pkg/agent/qrm-plugins/memory/dynamicpolicy/memoryadvisor"
 	"github.com/kubewharf/katalyst-core/pkg/agent/sysadvisor/metacache"
@@ -114,6 +115,9 @@ func (mg *memoryGuard) Reconcile(status *types.MemoryPressureStatus) error {
 			"numaFree", general.FormatMemoryQuantity(numaFree.Value),
 			"reclaimMemoryLimit", general.FormatMemoryQuantity(reclaimMemoryLimit))
 	}
+
+	reclaimMemoryLimit *= 2
+	klog.InfoS("hack", "reclaimMemoryLimit", reclaimMemoryLimit)
 
 	mg.reclaimMemoryLimit.Store(int64(reclaimMemoryLimit))
 	mg.reconcileStatus.Store(reconcileStatusSucceeded)
