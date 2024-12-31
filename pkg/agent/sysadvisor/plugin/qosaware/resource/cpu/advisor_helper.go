@@ -170,7 +170,11 @@ func (cra *cpuResourceAdvisor) updateNumasAvailableResource() {
 			reservedForReclaimNuma = v
 		}
 		cra.numaAvailable[id] = cpusPerNuma - reservePoolNuma - reservedForReclaimNuma
+
+		klog.InfoS("avail resources", "id", id, "total", cpusPerNuma, "reservePoolNuma", reservePoolNuma, "reservedForReclaimNuma", reservedForReclaimNuma, "numaAvailable", cra.numaAvailable[id])
 	}
+
+	klog.InfoS("numa resources", "reservedForReclaim", cra.reservedForReclaim, "numaAvailable", cra.numaAvailable, "nonBindingNumas", cra.nonBindingNumas.String())
 }
 
 func (cra *cpuResourceAdvisor) getNumasReservedForAllocate(numas machine.CPUSet) float64 {
