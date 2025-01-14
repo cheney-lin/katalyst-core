@@ -740,13 +740,14 @@ func (r *QoSRegionBase) getIndicators() (types.Indicator, error) {
 		if len(r.podSet) > 0 {
 			minTarget := math.MaxFloat64
 			sumTarget := 0.0
-			for podUID := range r.podSet {
+			for podUID, containers := range r.podSet {
 				indicatorTarget, err := r.getPodIndicatorTarget(ctx, podUID, string(indicatorName), defaultTarget)
 				if err != nil || indicatorTarget == nil {
 					indicatorTarget = &defaultTarget
 					general.Warningf("use default indicator target[%v],because of failed to get indicator %s of poduid[%s] err: %v",
 						defaultTarget, indicatorName, podUID, err)
 				}
+				klog.InfoS("pod indicators", "podUID", podUID, "indicatorName", indicatorName, "indicatorTarget", indicatorTarget, "containerName", containers.List())
 				sumTarget = sumTarget + *indicatorTarget
 				minTarget = math.Min(minTarget, *indicatorTarget)
 			}
