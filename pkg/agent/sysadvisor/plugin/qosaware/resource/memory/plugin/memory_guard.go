@@ -177,7 +177,7 @@ func (mg *memoryGuard) updateNonActualNUMABindingReclaimMemoryLimit(watermarkSca
 			"reclaimMemoryLimit", general.FormatMemoryQuantity(reclaimMemoryLimit))
 	}
 
-	mg.reclaimMemoryLimit.Store(int64(reclaimMemoryLimit))
+	mg.reclaimMemoryLimit.Store(int64(reclaimMemoryUnlimited))
 	return nil
 }
 
@@ -214,6 +214,6 @@ func (mg *memoryGuard) updateActualNUMABindingReclaimMemoryLimit(watermarkScaleF
 			"reclaimMemoryLimit", general.FormatMemoryQuantity(float64(numaBindingReclaimMemoryLimitMap[numaID])))
 	}
 
-	mg.numaBindingReclaimMemoryLimit.Store(numaBindingReclaimMemoryLimitMap)
+	mg.numaBindingReclaimMemoryLimit.Store(reclaimMemoryUnlimited)
 	return nil
 }
