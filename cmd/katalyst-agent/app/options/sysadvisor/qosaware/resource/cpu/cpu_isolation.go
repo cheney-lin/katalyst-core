@@ -19,6 +19,7 @@ package cpu
 import (
 	"fmt"
 	"strconv"
+	"time"
 
 	"github.com/spf13/pflag"
 	"k8s.io/apimachinery/pkg/util/sets"
@@ -58,8 +59,10 @@ type CPUIsolationOptions struct {
 	IsolationForceEnablePools  []string
 	IsolationNonExclusivePools []string
 
-	UtilWatermarkHigh float64
-	UtilWatermarkLow  float64
+	UtilWatermarkHigh       float64
+	UtilWatermarkLow        float64
+	MetricSyncPeriod        time.Duration
+	MetricSlidingWindowTime time.Duration
 }
 
 // NewCPUIsolationOptions creates a new Options with a default config
@@ -82,8 +85,10 @@ func NewCPUIsolationOptions() *CPUIsolationOptions {
 		IsolationForceEnablePools:  []string{},
 		IsolationNonExclusivePools: []string{},
 
-		UtilWatermarkHigh: 0.3,
-		UtilWatermarkLow:  0.2,
+		UtilWatermarkHigh:       0.55,
+		UtilWatermarkLow:        0.40,
+		MetricSyncPeriod:        time.Second * 20,
+		MetricSlidingWindowTime: 2 * time.Minute,
 	}
 }
 
@@ -122,8 +127,10 @@ func (o *CPUIsolationOptions) AddFlags(fs *pflag.FlagSet) {
 	fs.StringArrayVar(&o.IsolationNonExclusivePools, "isolation-non-exclusive-pools", o.IsolationNonExclusivePools,
 		"isolation is non-exclusive for get given pool")
 
-	fs.Float64Var(&o.UtilWatermarkLow, "isolation-util-watermark-low", o.UtilWatermarkLow, "cpu utilization watermark low")
-	fs.Float64Var(&o.UtilWatermarkHigh, "isolation-util-watermark-high", o.UtilWatermarkHigh, "cpu utilization watermark high")
+	fs.Float64Var(&o.UtilWatermarkLow, "isolation-util-watermark-low", o.UtilWatermarkLow, "cpu utilization watermark low for isolation")
+	fs.Float64Var(&o.UtilWatermarkHigh, "isolation-util-watermark-high", o.UtilWatermarkHigh, "cpu utilization watermark high for isolation")
+	fs.DurationVar(&o.MetricSlidingWindowTime, "isolation-metric-sliding-window-time", o.MetricSlidingWindowTime, "metric sliding window time for isolation")
+	fs.DurationVar(&o.MetricSyncPeriod, "isolation-metric-sync-period", o.MetricSyncPeriod, "metric sync period for isolation")
 }
 
 // ApplyTo fills up config with options
@@ -169,6 +176,8 @@ func (o *CPUIsolationOptions) ApplyTo(c *cpu.CPUIsolationConfiguration) error {
 
 	c.UtilWatermarkHigh = o.UtilWatermarkHigh
 	c.UtilWatermarkLow = o.UtilWatermarkLow
+	c.MetricSlidingWindowTime = o.MetricSlidingWindowTime
+	c.MetricSyncPeriod = o.MetricSyncPeriod
 
 	return nil
 }

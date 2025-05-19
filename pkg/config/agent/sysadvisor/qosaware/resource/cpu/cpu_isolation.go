@@ -17,6 +17,8 @@ limitations under the License.
 package cpu
 
 import (
+	"time"
+
 	"k8s.io/apimachinery/pkg/util/sets"
 )
 
@@ -48,8 +50,10 @@ type CPUIsolationConfiguration struct {
 	IsolationForceEnablePools  sets.String
 	IsolationNonExclusivePools sets.String
 
-	UtilWatermarkHigh float64
-	UtilWatermarkLow  float64
+	UtilWatermarkHigh       float64
+	UtilWatermarkLow        float64
+	MetricSyncPeriod        time.Duration
+	MetricSlidingWindowTime time.Duration
 }
 
 // NewCPUIsolationConfiguration creates new resource advisor configurations

@@ -154,6 +154,11 @@ func NewCPUResourceAdvisor(conf *config.Configuration, extraConf interface{}, me
 }
 
 func (cra *cpuResourceAdvisor) Run(ctx context.Context) {
+	for _, isolator := range cra.isolators {
+		if err := isolator.Start(ctx); err != nil {
+			klog.Fatalf("[qosaware-cpu] start isolator failed: %v", err)
+		}
+	}
 	<-ctx.Done()
 }
 

@@ -19,11 +19,13 @@ package isolation
 import (
 	"context"
 	"fmt"
+	"sync"
 
 	v1 "k8s.io/api/core/v1"
 	"k8s.io/apimachinery/pkg/api/resource"
 	"k8s.io/apimachinery/pkg/util/errors"
 	"k8s.io/apimachinery/pkg/util/sets"
+	"k8s.io/apimachinery/pkg/util/wait"
 	"k8s.io/klog/v2"
 	resourceutil "k8s.io/kubernetes/pkg/api/v1/resource"
 
@@ -33,9 +35,12 @@ import (
 	"github.com/kubewharf/katalyst-core/pkg/config"
 	"github.com/kubewharf/katalyst-core/pkg/config/agent/sysadvisor/qosaware/resource/cpu"
 	metric_consts "github.com/kubewharf/katalyst-core/pkg/consts"
+	pkgconsts "github.com/kubewharf/katalyst-core/pkg/consts"
 	"github.com/kubewharf/katalyst-core/pkg/metaserver"
 	"github.com/kubewharf/katalyst-core/pkg/metrics"
 	"github.com/kubewharf/katalyst-core/pkg/util/general"
+	"github.com/kubewharf/katalyst-core/pkg/util/native"
+	"github.com/kubewharf/katalyst-core/pkg/util/strategygroup"
 )
 
 type metricAggregators map[string]general.SmoothWindow
@@ -49,9 +54,11 @@ func (m metricAggregators) gc() {
 }
 
 type PerfIsolator struct {
-	conf              *cpu.CPUIsolationConfiguration
-	smoothWindowOpts  general.SmoothWindowOpts
-	metricAggregators metricAggregators
+	conf                   *config.Configuration
+	isolationConfiguration *cpu.CPUIsolationConfiguration
+	smoothWindowOpts       general.SmoothWindowOpts
+	metricAggregators      metricAggregators
+	podCPUUsages           sync.Map
 
 	emitter    metrics.MetricEmitter
 	metaReader metacache.MetaReader
@@ -62,19 +69,73 @@ func NewPerfIsolator(conf *config.Configuration, _ interface{}, emitter metrics.
 	metaCache metacache.MetaReader, metaServer *metaserver.MetaServer,
 ) Isolator {
 	return &PerfIsolator{
-		conf: conf.CPUIsolationConfiguration,
+		conf:                   conf,
+		isolationConfiguration: conf.CPUIsolationConfiguration,
 		smoothWindowOpts: general.SmoothWindowOpts{
-			WindowSize:    int(conf.MetricSlidingWindowTime.Seconds() / conf.NodeMetricReporterConfiguration.SyncPeriod.Seconds()),
-			TTL:           conf.MetricSlidingWindowTime * 2,
+			WindowSize:    int(conf.CPUIsolationConfiguration.MetricSlidingWindowTime.Seconds() / conf.CPUIsolationConfiguration.MetricSyncPeriod.Seconds()),
+			TTL:           conf.CPUIsolationConfiguration.MetricSlidingWindowTime * 2,
 			UsedMillValue: true,
 			AggregateFunc: general.SmoothWindowAggFuncAvg,
 		},
 		metricAggregators: map[string]general.SmoothWindow{},
+		podCPUUsages:      sync.Map{},
 
 		emitter:    emitter,
 		metaReader: metaCache,
 		metaServer: metaServer,
 	}
+}
+
+func (p *PerfIsolator) Start(ctx context.Context) error {
+	go wait.Until(p.updatePodMetrics, p.isolationConfiguration.MetricSyncPeriod, ctx.Done())
+	return nil
+}
+
+func (p *PerfIsolator) updatePodCPUUsage(pod *v1.Pod) error {
+	podCPUUsage := 0.0
+	for _, container := range pod.Spec.Containers {
+		data, err := p.metaReader.GetContainerMetric(string(pod.UID), container.Name, metric_consts.MetricCPUUsageContainer)
+		if err != nil {
+			klog.ErrorS(err, "get container metric", "pod", pod.Name)
+			return err
+		}
+		podCPUUsage += data.Value
+	}
+	v := resource.NewMilliQuantity(int64(podCPUUsage*1000), resource.DecimalSI)
+	aggV := p.getAggregatedMetric(v, string(pod.UID))
+	if aggV != nil {
+		p.podCPUUsages.Store(string(pod.UID), aggV.AsApproximateFloat64())
+		return nil
+	}
+
+	return fmt.Errorf("failed to get aggregated metric for pod %s/%s", pod.Namespace, pod.Name)
+}
+
+func (p *PerfIsolator) updatePodMetrics() {
+	pods, err := p.metaServer.GetPodList(context.TODO(), func(pod *v1.Pod) bool {
+		return native.PodIsActive(pod)
+	})
+	if err != nil {
+		klog.Errorf("Failed to get pod list: %v", err)
+		return
+	}
+	podSet := sets.NewString()
+
+	for _, pod := range pods {
+		podSet.Insert(string(pod.UID))
+		err := p.updatePodCPUUsage(pod)
+		if err != nil {
+			klog.ErrorS(err, "Failed to update pod CPU usage", "pod", pod.Name)
+		}
+	}
+	p.metricAggregators.gc()
+
+	p.podCPUUsages.Range(func(k, v interface{}) bool {
+		if !podSet.Has(k.(string)) {
+			p.podCPUUsages.Delete(k.(string))
+		}
+		return true
+	})
 }
 
 func (p *PerfIsolator) podIsOverCommited(pod *v1.Pod) bool {
@@ -90,7 +151,8 @@ func (p *PerfIsolator) podIsOverCommited(pod *v1.Pod) bool {
 }
 
 func (p *PerfIsolator) GetIsolatedPods() ([]string, error) {
-	if p.conf.IsolationDisabled {
+	metricPolicyEnabled, _ := strategygroup.IsStrategyEnabledForNode(pkgconsts.StrategyNameNonOverCommittedPodsIsolator, false, p.conf)
+	if p.isolationConfiguration.IsolationDisabled || !metricPolicyEnabled {
 		return []string{}, nil
 	}
 
@@ -129,7 +191,6 @@ func (p *PerfIsolator) GetIsolatedPods() ([]string, error) {
 			uids = append(uids, string(pod.UID))
 		}
 	}
-	p.metricAggregators.gc()
 
 	return uids, errors.NewAggregate(errList)
 }
@@ -145,33 +206,32 @@ func (p *PerfIsolator) podIsIsolated(pod *v1.Pod) bool {
 }
 
 func (p *PerfIsolator) checkIsolatedByPodUtilization(pod *v1.Pod) (bool, error) {
-	podCPUUsage := 0.0
-	for _, container := range pod.Spec.Containers {
-		data, err := p.metaReader.GetContainerMetric(string(pod.UID), container.Name, metric_consts.MetricCPUUsageContainer)
-		if err != nil {
-			klog.ErrorS(err, "get container metric", "pod", pod.Name)
-			return false, err
-		}
-		podCPUUsage += data.Value
+	tmp, ok := p.podCPUUsages.Load(string(pod.UID))
+	if !ok {
+		return false, fmt.Errorf("pod %v has no CPU usage", pod.Name)
 	}
 
-	v := resource.NewMilliQuantity(int64(podCPUUsage*1000), resource.DecimalSI)
-	aggV := p.getAggregatedMetric(v, string(pod.UID))
-	if aggV == nil {
-		return false, fmt.Errorf("failed to get aggregated metric for %v", pod.Name)
-	}
+	podCPUUsage := tmp.(float64)
 
 	_, limits := resourceutil.PodRequestsAndLimits(pod)
-	curUtil := aggV.AsApproximateFloat64() / limits.Cpu().AsApproximateFloat64()
+	curUtil := podCPUUsage / limits.Cpu().AsApproximateFloat64()
 	podIsIsolated := p.podIsIsolated(pod)
 	klog.InfoS("pod utilization", "pod", pod.Name, "utilization", curUtil,
-		"UtilWatermarkHigh", p.conf.UtilWatermarkHigh, "UtilWatermarkLow", p.conf.UtilWatermarkLow, "podIsIsolated", podIsIsolated)
-	if !podIsIsolated && curUtil > p.conf.UtilWatermarkHigh {
-		return true, nil
-	} else if podIsIsolated && curUtil > p.conf.UtilWatermarkLow {
+		"UtilWatermarkHigh", p.isolationConfiguration.UtilWatermarkHigh, "UtilWatermarkLow", p.isolationConfiguration.UtilWatermarkLow, "podIsIsolated", podIsIsolated)
+
+	if !podIsIsolated {
+		if curUtil > p.isolationConfiguration.UtilWatermarkHigh {
+			klog.InfoS("do isolation", "pod", pod.Name)
+			return true, nil
+		}
+		return false, nil
+	} else {
+		if curUtil < p.isolationConfiguration.UtilWatermarkLow {
+			klog.InfoS("do disisolation", "pod", pod.Name)
+			return false, nil
+		}
 		return true, nil
 	}
-	return false, nil
 }
 
 func (p *PerfIsolator) getAggregatedMetric(value *resource.Quantity, uid string) *resource.Quantity {

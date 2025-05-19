@@ -17,6 +17,7 @@ limitations under the License.
 package isolation
 
 import (
+	"context"
 	"sort"
 	"strings"
 	"sync"
@@ -84,6 +85,10 @@ func NewLoadIsolator(conf *config.Configuration, _ interface{}, emitter metrics.
 
 		configTranslator: general.NewCommonSuffixTranslator(commonstate.NUMAPoolInfix),
 	}
+}
+
+func (l *LoadIsolator) Start(ctx context.Context) error {
+	return nil
 }
 
 func (l *LoadIsolator) GetIsolatedPods() ([]string, error) {
