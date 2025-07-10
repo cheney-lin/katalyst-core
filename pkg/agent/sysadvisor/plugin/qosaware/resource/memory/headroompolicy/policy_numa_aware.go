@@ -175,13 +175,13 @@ func (p *PolicyNUMAAware) Update() (err error) {
 		if _, ok := numaHeadroom[numaID]; !ok {
 			numaHeadroomQuantity[numaID] = *resource.NewQuantity(0, resource.BinarySI)
 		} else {
-			numaHeadroomQuantity[numaID] = *resource.NewQuantity(int64(numaHeadroom[numaID]), resource.BinarySI)
+			numaHeadroomQuantity[numaID] = *resource.NewQuantity(2*int64(numaHeadroom[numaID]), resource.BinarySI)
 		}
 		general.InfoS("revised numa memory headroom", "NUMA-ID", numaID, "headroom", general.FormatMemoryQuantity(numaHeadroom[numaID]))
 	}
 
 	p.numaMemoryHeadroom = numaHeadroomQuantity
-	p.memoryHeadroom = *resource.NewQuantity(int64(totalNUMAHeadroom), resource.BinarySI)
+	p.memoryHeadroom = *resource.NewQuantity(int64(2*totalNUMAHeadroom), resource.BinarySI)
 
 	general.InfoS("total memory reclaimable",
 		"reclaimableMemory", general.FormatMemoryQuantity(reclaimableMemory),

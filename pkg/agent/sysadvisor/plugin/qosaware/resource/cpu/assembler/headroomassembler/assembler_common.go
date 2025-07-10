@@ -103,7 +103,7 @@ func (ha *HeadroomAssemblerCommon) GetHeadroom() (resource.Quantity, map[int]res
 				return resource.Quantity{}, nil, fmt.Errorf("get reclaim Metrics failed with numa %d: %v", numaID, err)
 			}
 
-			headroom := *resource.NewQuantity(int64(math.Ceil(reclaimMetrics.ReclaimedCoresSupply)), resource.DecimalSI)
+			headroom := *resource.NewQuantity(2*int64(math.Ceil(reclaimMetrics.ReclaimedCoresSupply)), resource.DecimalSI)
 			numaHeadroom[numaID] = headroom
 			totalHeadroom.Add(headroom)
 		}
@@ -127,7 +127,7 @@ func (ha *HeadroomAssemblerCommon) GetHeadroom() (resource.Quantity, map[int]res
 
 			headroomPerNUMA := reclaimMetrics.ReclaimedCoresSupply / float64(len(nonBindingNumas))
 			for _, numaID := range nonBindingNumas {
-				q := *resource.NewQuantity(int64(headroomPerNUMA), resource.DecimalSI)
+				q := *resource.NewQuantity(2*int64(headroomPerNUMA), resource.DecimalSI)
 				numaHeadroom[numaID] = q
 				totalHeadroom.Add(q)
 			}
