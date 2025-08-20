@@ -140,6 +140,7 @@ func (p *CPUPressureLoadEviction) ThresholdMet(_ context.Context,
 
 	dynamicConfig := p.dynamicConf.GetDynamicConfiguration()
 	if !dynamicConfig.EnableLoadEviction {
+		general.Infof("load eviction is not enabled")
 		return &pluginapi.ThresholdMetResponse{
 			MetType: pluginapi.ThresholdMetType_NOT_MET,
 		}, nil
