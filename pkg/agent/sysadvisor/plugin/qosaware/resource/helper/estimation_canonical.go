@@ -25,6 +25,7 @@ import (
 	"github.com/kubewharf/katalyst-core/pkg/agent/sysadvisor/types"
 	"github.com/kubewharf/katalyst-core/pkg/config/agent/dynamic"
 	"github.com/kubewharf/katalyst-core/pkg/consts"
+	metaserverHelper "github.com/kubewharf/katalyst-core/pkg/metaserver/agent/metric/helper"
 	"github.com/kubewharf/katalyst-core/pkg/util/general"
 )
 
@@ -188,32 +189,39 @@ func EstimateContainerMemoryUsage(ci *types.ContainerInfo, metaReader metacache.
 
 // UtilBasedCapacityOptions are options for estimate util based resource capacity
 type UtilBasedCapacityOptions struct {
-	TargetUtilization float64
-	MaxUtilization    float64
-	MaxOversoldRate   float64
-	MaxCapacity       float64
+	TargetUtilization  float64
+	MaxUtilization     float64
+	MaxOversoldRate    float64
+	MaxCapacity        float64
+	MaxPoolUtilization float64
 }
 
 func GenerateUtilBasedCapacityOptions(dynamicConfig *dynamic.Configuration, capacity float64) UtilBasedCapacityOptions {
 	return UtilBasedCapacityOptions{
-		TargetUtilization: dynamicConfig.TargetReclaimedCoreUtilization,
-		MaxUtilization:    dynamicConfig.MaxReclaimedCoreUtilization,
-		MaxOversoldRate:   dynamicConfig.CPUUtilBasedConfiguration.MaxOversoldRate,
-		MaxCapacity:       dynamicConfig.MaxHeadroomCapacityRate * capacity,
+		TargetUtilization:  dynamicConfig.TargetReclaimedCoreUtilization,
+		MaxUtilization:     dynamicConfig.MaxReclaimedCoreUtilization,
+		MaxOversoldRate:    dynamicConfig.CPUUtilBasedConfiguration.MaxOversoldRate,
+		MaxCapacity:        dynamicConfig.MaxHeadroomCapacityRate * capacity,
+		MaxPoolUtilization: 0.7,
 	}
 }
 
 // EstimateUtilBasedCapacity capacity by taking into account the difference between the current
 // and target resource utilization of the workload pool
-func EstimateUtilBasedCapacity(options UtilBasedCapacityOptions, resourceSupply,
-	currentUtilization, lastCapacityResult float64,
+func EstimateUtilBasedCapacity(options UtilBasedCapacityOptions, reclaimMetrics *metaserverHelper.ReclaimMetrics,
+	lastCapacityResult float64,
 ) (float64, error) {
+	if reclaimMetrics == nil {
+		return 0, fmt.Errorf("reclaimMetrics is nil")
+	}
 	var oversold, result float64
+
+	currentUtilization := reclaimMetrics.CgroupCPUUsage / reclaimMetrics.ReclaimedCoresSupply
 
 	defer func() {
 		general.Infof("resource supply %.2f, current utilization: %.2f (target: %.2f, max: %.2f), "+
 			"last result: %.2f, oversold: %.2f, max oversold ratio: %.2f, final result: %.2f (max capacity: %.2f)",
-			resourceSupply, currentUtilization, options.TargetUtilization, options.MaxUtilization, lastCapacityResult,
+			reclaimMetrics.ReclaimedCoresSupply, currentUtilization, options.TargetUtilization, options.MaxUtilization, lastCapacityResult,
 			oversold, options.MaxOversoldRate, result, options.MaxCapacity)
 	}()
 
@@ -222,17 +230,20 @@ func EstimateUtilBasedCapacity(options UtilBasedCapacityOptions, resourceSupply,
 	// if the maximum resource utilization is greater than zero, the oversold can be negative to reduce
 	// reporting capacity to avoid too many workloads being scheduled to that machine.
 	if options.TargetUtilization > currentUtilization {
-		oversold = resourceSupply * (options.TargetUtilization - currentUtilization)
+		oversold = reclaimMetrics.ReclaimedCoresSupply * (options.TargetUtilization - currentUtilization)
 	} else if options.MaxUtilization > 0 && currentUtilization > options.MaxUtilization {
-		oversold = resourceSupply * (options.MaxUtilization - currentUtilization)
+		oversold = reclaimMetrics.ReclaimedCoresSupply * (options.MaxUtilization - currentUtilization)
 	}
 
 	// TODO: consider cpu PSI
 
-	result = math.Max(lastCapacityResult+oversold, resourceSupply)
-	result = math.Min(result, resourceSupply*options.MaxOversoldRate)
+	result = math.Max(lastCapacityResult+oversold, reclaimMetrics.ReclaimedCoresSupply)
+	result = math.Min(result, reclaimMetrics.ReclaimedCoresSupply*options.MaxOversoldRate)
 	if options.MaxCapacity > 0 {
 		result = math.Min(result, options.MaxCapacity)
+	}
+	if (reclaimMetrics.PoolCPUUsage-reclaimMetrics.CgroupCPUUsage)/float64(reclaimMetrics.Size) > options.MaxPoolUtilization {
+		result = 0
 	}
 
 	return result, nil
