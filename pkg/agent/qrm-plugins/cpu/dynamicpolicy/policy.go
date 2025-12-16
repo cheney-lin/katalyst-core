@@ -40,6 +40,7 @@ import (
 	"github.com/kubewharf/katalyst-core/pkg/agent/qrm-plugins/commonstate"
 	cpuconsts "github.com/kubewharf/katalyst-core/pkg/agent/qrm-plugins/cpu/consts"
 	"github.com/kubewharf/katalyst-core/pkg/agent/qrm-plugins/cpu/dynamicpolicy/calculator"
+	"github.com/kubewharf/katalyst-core/pkg/agent/qrm-plugins/cpu/dynamicpolicy/controlknob"
 	advisorapi "github.com/kubewharf/katalyst-core/pkg/agent/qrm-plugins/cpu/dynamicpolicy/cpuadvisor"
 	"github.com/kubewharf/katalyst-core/pkg/agent/qrm-plugins/cpu/dynamicpolicy/cpueviction"
 	"github.com/kubewharf/katalyst-core/pkg/agent/qrm-plugins/cpu/dynamicpolicy/hintoptimizer"
@@ -252,6 +253,9 @@ func NewDynamicPolicy(agentCtx *agent.GenericContext, conf *config.Configuration
 		consts.PodAnnotationQoSLevelReclaimedCores: policyImplement.reclaimedCoresHintHandler,
 		consts.PodAnnotationQoSLevelSystemCores:    policyImplement.systemCoresHintHandler,
 	}
+
+	controlknob.RegisterControlKnobHandler(controlknob.ControlKnobKeyCgroupConfig, policyImplement.applyCgroupConfigs)
+	controlknob.RegisterControlKnobHandler(controlknob.ControlKnobKeyCPUNUMAHeadroom, policyImplement.applyNUMAHeadroom)
 
 	if err := policyImplement.cleanPools(); err != nil {
 		return false, agent.ComponentStub{}, fmt.Errorf("cleanPools failed with error: %v", err)

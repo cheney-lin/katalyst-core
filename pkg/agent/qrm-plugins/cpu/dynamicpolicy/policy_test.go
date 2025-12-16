@@ -47,6 +47,7 @@ import (
 	"github.com/kubewharf/katalyst-core/pkg/agent/qrm-plugins/commonstate"
 	cpuconsts "github.com/kubewharf/katalyst-core/pkg/agent/qrm-plugins/cpu/consts"
 	"github.com/kubewharf/katalyst-core/pkg/agent/qrm-plugins/cpu/dynamicpolicy/calculator"
+	"github.com/kubewharf/katalyst-core/pkg/agent/qrm-plugins/cpu/dynamicpolicy/controlknob"
 	advisorapi "github.com/kubewharf/katalyst-core/pkg/agent/qrm-plugins/cpu/dynamicpolicy/cpuadvisor"
 	"github.com/kubewharf/katalyst-core/pkg/agent/qrm-plugins/cpu/dynamicpolicy/hintoptimizer"
 	"github.com/kubewharf/katalyst-core/pkg/agent/qrm-plugins/cpu/dynamicpolicy/hintoptimizer/policy/canonical"
@@ -4243,7 +4244,7 @@ func TestAllocateByQoSAwareServerListAndWatchResp(t *testing.T) {
 					{
 						CalculationResult: &advisorsvc.CalculationResult{
 							Values: map[string]string{
-								string(advisorapi.ControlKnobKeyCPUNUMAHeadroom): `{"0": 10.1, "1": 12.2}`,
+								string(controlknob.ControlKnobKeyCPUNUMAHeadroom): `{"0": 10.1, "1": 12.2}`,
 							},
 						},
 					},

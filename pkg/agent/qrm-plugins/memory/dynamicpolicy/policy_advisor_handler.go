@@ -449,6 +449,10 @@ func (p *DynamicPolicy) handleAdvisorMemoryLimitInBytes(
 	return nil
 }
 
+func (p *DynamicPolicy) AddAsyncWork(workName string, work *asyncworker.Work, policy asyncworker.DuplicateWorkPolicy) error {
+	return p.asyncWorkers.AddWork(workName, work, policy)
+}
+
 func (p *DynamicPolicy) handleAdvisorDropCache(
 	_ *config.Configuration,
 	_ interface{},

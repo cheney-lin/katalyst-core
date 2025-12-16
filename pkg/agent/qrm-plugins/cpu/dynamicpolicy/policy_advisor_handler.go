@@ -43,6 +43,7 @@ import (
 	"github.com/kubewharf/katalyst-core/pkg/agent/qrm-plugins/commonstate"
 	cpuconsts "github.com/kubewharf/katalyst-core/pkg/agent/qrm-plugins/cpu/consts"
 	"github.com/kubewharf/katalyst-core/pkg/agent/qrm-plugins/cpu/dynamicpolicy/calculator"
+	"github.com/kubewharf/katalyst-core/pkg/agent/qrm-plugins/cpu/dynamicpolicy/controlknob"
 	advisorapi "github.com/kubewharf/katalyst-core/pkg/agent/qrm-plugins/cpu/dynamicpolicy/cpuadvisor"
 	"github.com/kubewharf/katalyst-core/pkg/agent/qrm-plugins/cpu/dynamicpolicy/state"
 	"github.com/kubewharf/katalyst-core/pkg/agent/qrm-plugins/util"
@@ -502,14 +503,17 @@ func (p *DynamicPolicy) allocateByCPUAdvisor(
 		return fmt.Errorf("applyBlocks failed with error: %v", applyErr)
 	}
 
-	applyErr = p.applyNUMAHeadroom(resp)
-	if applyErr != nil {
-		return fmt.Errorf("applyNUMAHeadroom failed with error: %v", applyErr)
-	}
-
-	applyErr = p.applyCgroupConfigs(resp)
-	if applyErr != nil {
-		return fmt.Errorf("applyCgroupConfigs failed with error: %v", applyErr)
+	for _, entry := range resp.ExtraEntries {
+		cgPath := entry.CgroupPath
+		for name, value := range entry.CalculationResult.Values {
+			handler, ok := controlknob.GetControlKnobHandler(controlknob.CPUControlKnobName(name))
+			if ok {
+				err := handler(cgPath, value)
+				if err != nil {
+					return fmt.Errorf("handle cpu control knob %s failed with error: %v", name, err)
+				}
+			}
+		}
 	}
 
 	curAllowSharedCoresOverlapReclaimedCores := p.state.GetAllowSharedCoresOverlapReclaimedCores()
@@ -523,56 +527,61 @@ func (p *DynamicPolicy) allocateByCPUAdvisor(
 	return nil
 }
 
-func (p *DynamicPolicy) applyCgroupConfigs(resp *advisorapi.ListAndWatchResponse) error {
-	for _, calculationInfo := range resp.ExtraEntries {
-		if !general.IsPathExists(common.GetAbsCgroupPath(common.DefaultSelectedSubsys, calculationInfo.CgroupPath)) {
-			general.Infof("cgroup path not exist, skip applyCgroupConfigs: %s", common.GetAbsCgroupPath(common.DefaultSelectedSubsys, calculationInfo.CgroupPath))
-			continue
-		}
+func (p *DynamicPolicy) applyNUMAHeadroom(_, numaHeadrooms string) error {
+	cpuNUMAHeadroom := &controlknob.CPUNUMAHeadroom{}
+	err := json.Unmarshal([]byte(numaHeadrooms), cpuNUMAHeadroom)
+	if err != nil {
+		return fmt.Errorf("unmarshal %s: %s failed with error: %v",
+			controlknob.ControlKnobKeyCPUNUMAHeadroom, cpuNUMAHeadroom, err)
+	}
 
-		cgConf, ok := calculationInfo.CalculationResult.Values[string(advisorapi.ControlKnobKeyCgroupConfig)]
-		if !ok {
-			continue
-		}
+	p.state.SetNUMAHeadroom(*cpuNUMAHeadroom, true)
+	general.Infof("cpuNUMAHeadroom: %v", cpuNUMAHeadroom)
+	return nil
+}
 
-		resources := &common.CgroupResources{}
-		err := json.Unmarshal([]byte(cgConf), resources)
-		if err != nil {
-			return fmt.Errorf("unmarshal %s: %s failed with error: %v",
-				advisorapi.ControlKnobKeyCgroupConfig, cgConf, err)
-		}
+func (p *DynamicPolicy) applyCgroupConfigs(cgroupPath, cgConf string) error {
+	if !general.IsPathExists(common.GetAbsCgroupPath(common.DefaultSelectedSubsys, cgroupPath)) {
+		return fmt.Errorf("cgroup path not exist, skip applyCgroupConfigs: %s", common.GetAbsCgroupPath(common.DefaultSelectedSubsys, cgroupPath))
+	}
 
-		resources.SkipDevices = true
-		resources.SkipFreezeOnSet = true
+	resources := &common.CgroupResources{}
+	err := json.Unmarshal([]byte(cgConf), resources)
+	if err != nil {
+		return fmt.Errorf("unmarshal %s: %s failed with error: %v",
+			controlknob.ControlKnobKeyCgroupConfig, cgConf, err)
+	}
 
-		err = p.checkAndApplyIfCgroupV1(calculationInfo, resources)
-		if err != nil {
-			_ = p.emitter.StoreInt64(util.MetricNameCheckApplyV1Error, 1, metrics.MetricTypeNameCount)
-			return fmt.Errorf("checkAndApplyIfCgroupV1 failed with error: %v", err)
-		}
+	resources.SkipDevices = true
+	resources.SkipFreezeOnSet = true
 
-		err = common.ApplyCgroupConfigs(calculationInfo.CgroupPath, resources)
-		if err != nil {
-			return fmt.Errorf("ApplyCgroupConfigs failed: %s, %v", calculationInfo.CgroupPath, err)
-		}
+	err = p.checkAndApplyIfCgroupV1(cgroupPath, resources)
+	if err != nil {
+		_ = p.emitter.StoreInt64(util.MetricNameCheckApplyV1Error, 1, metrics.MetricTypeNameCount)
+		return fmt.Errorf("checkAndApplyIfCgroupV1 failed with error: %v", err)
+	}
+
+	err = common.ApplyCgroupConfigs(cgroupPath, resources)
+	if err != nil {
+		return fmt.Errorf("ApplyCgroupConfigs failed: %s, %v", cgroupPath, err)
 	}
 
 	return nil
 }
 
-func (p *DynamicPolicy) checkAndApplyIfCgroupV1(calculationInfo *advisorsvc.CalculationInfo, resources *common.CgroupResources) error {
+func (p *DynamicPolicy) checkAndApplyIfCgroupV1(cgPath string, resources *common.CgroupResources) error {
 	if common.CheckCgroup2UnifiedMode() {
 		return nil
 	}
 
-	currentParentCgroupCPUStats, err := cgroupmgr.GetCPUWithRelativePath(calculationInfo.CgroupPath)
+	currentParentCgroupCPUStats, err := cgroupmgr.GetCPUWithRelativePath(cgPath)
 	if err != nil {
 		return fmt.Errorf("Get big group quota failed with error: %v", err)
 	}
 
 	// scale down the be group quota
 	if currentParentCgroupCPUStats.CpuQuota < 0 || resources.CpuQuota <= currentParentCgroupCPUStats.CpuQuota {
-		err := p.checkAndApplyAllPodsQuota(calculationInfo, resources.CpuQuota)
+		err := p.checkAndApplyAllPodsQuota(cgPath, resources.CpuQuota)
 		if err != nil {
 			return fmt.Errorf("checkAndApplyAllPodsQuota failed with error: %v", err)
 		}
@@ -581,7 +590,7 @@ func (p *DynamicPolicy) checkAndApplyIfCgroupV1(calculationInfo *advisorsvc.Calc
 		if resources.CpuQuota < minBGQuota {
 			minBGQuota = resources.CpuQuota
 		}
-		err := p.checkAndApplyAllPodsQuota(calculationInfo, minBGQuota)
+		err := p.checkAndApplyAllPodsQuota(cgPath, minBGQuota)
 		if err != nil {
 			return fmt.Errorf("checkAndApplyAllPodsQuota failed with error: %v", err)
 		}
@@ -589,14 +598,14 @@ func (p *DynamicPolicy) checkAndApplyIfCgroupV1(calculationInfo *advisorsvc.Calc
 	return nil
 }
 
-func (p *DynamicPolicy) checkAndApplyAllPodsQuota(calculationInfo *advisorsvc.CalculationInfo, bigGroupQuota int64) error {
-	podsPathMap, podDirs, err := p.getCurrentPathAllPodsDirAndMap(calculationInfo.CgroupPath)
+func (p *DynamicPolicy) checkAndApplyAllPodsQuota(cgPath string, bigGroupQuota int64) error {
+	podsPathMap, podDirs, err := p.getCurrentPathAllPodsDirAndMap(cgPath)
 	if err != nil {
 		return err
 	}
 
 	for _, podDir := range podDirs {
-		pod, podRelativePath, err := p.getPodAndRelativePath(calculationInfo.CgroupPath, podDir, podsPathMap)
+		pod, podRelativePath, err := p.getPodAndRelativePath(cgPath, podDir, podsPathMap)
 		if err != nil {
 			general.Warningf("getPodAndRelativePath error for pod dir %s: %v", podDir, err)
 			continue
@@ -1297,40 +1306,6 @@ func (p *DynamicPolicy) getOwnerPoolNameFromAdvisor(allocationInfo *state.Alloca
 			allocationInfo.PodNamespace, allocationInfo.PodName, allocationInfo.ContainerName, allocationInfo.QoSLevel)
 	}
 	return ownerPoolName
-}
-
-func (p *DynamicPolicy) applyNUMAHeadroom(resp *advisorapi.ListAndWatchResponse) error {
-	if resp == nil {
-		return fmt.Errorf("applyNUMAHeadroom got nil resp")
-	}
-
-	for _, calculationInfo := range resp.ExtraEntries {
-		if calculationInfo == nil {
-			general.Warningf("resp.ExtraEntries has nil calculationInfo")
-			continue
-		} else if calculationInfo.CalculationResult == nil {
-			general.Warningf("resp.ExtraEntries has nil CalculationResult")
-			continue
-		}
-
-		cpuNUMAHeadroomValue, ok := calculationInfo.CalculationResult.Values[string(advisorapi.ControlKnobKeyCPUNUMAHeadroom)]
-		if !ok {
-			general.Warningf("resp.ExtraEntry has no cpu_numa_headroom value")
-			continue
-		}
-
-		cpuNUMAHeadroom := &advisorapi.CPUNUMAHeadroom{}
-		err := json.Unmarshal([]byte(cpuNUMAHeadroomValue), cpuNUMAHeadroom)
-		if err != nil {
-			return fmt.Errorf("unmarshal %s: %s failed with error: %v",
-				advisorapi.ControlKnobKeyCPUNUMAHeadroom, cpuNUMAHeadroomValue, err)
-		}
-
-		p.state.SetNUMAHeadroom(*cpuNUMAHeadroom, true)
-		general.Infof("cpuNUMAHeadroom: %v", cpuNUMAHeadroom)
-	}
-
-	return nil
 }
 
 func (p *DynamicPolicy) reviseReclaimPool(newEntries state.PodEntries, nonReclaimActualBindingNUMAs, pooledUnionDedicatedCPUSet machine.CPUSet) error {

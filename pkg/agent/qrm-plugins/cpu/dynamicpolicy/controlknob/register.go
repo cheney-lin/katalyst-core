@@ -14,13 +14,22 @@ See the License for the specific language governing permissions and
 limitations under the License.
 */
 
-package cpuadvisor
+package controlknob
 
-type CPUControlKnobName string
+import "sync"
 
-const (
-	ControlKnobKeyCPUNUMAHeadroom CPUControlKnobName = "cpu_numa_headroom"
-	ControlKnobKeyCgroupConfig    CPUControlKnobName = "cgroup_config"
-)
+type Handler func(cgroupPath, value string) error
 
-type CPUNUMAHeadroom map[int]float64
+var cpuControlKnobHandler sync.Map
+
+func RegisterControlKnobHandler(name CPUControlKnobName, handler Handler) {
+	cpuControlKnobHandler.Store(name, handler)
+}
+
+func GetControlKnobHandler(name CPUControlKnobName) (Handler, bool) {
+	v, ok := cpuControlKnobHandler.Load(name)
+	if ok {
+		return v.(Handler), true
+	}
+	return nil, false
+}
