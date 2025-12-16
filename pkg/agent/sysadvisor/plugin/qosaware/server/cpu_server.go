@@ -35,6 +35,7 @@ import (
 	"github.com/kubewharf/katalyst-api/pkg/consts"
 	"github.com/kubewharf/katalyst-core/pkg/agent/qrm-plugins/advisorsvc"
 	"github.com/kubewharf/katalyst-core/pkg/agent/qrm-plugins/commonstate"
+	"github.com/kubewharf/katalyst-core/pkg/agent/qrm-plugins/cpu/dynamicpolicy/controlknob"
 	"github.com/kubewharf/katalyst-core/pkg/agent/qrm-plugins/cpu/dynamicpolicy/cpuadvisor"
 	"github.com/kubewharf/katalyst-core/pkg/agent/sysadvisor/metacache"
 	"github.com/kubewharf/katalyst-core/pkg/agent/sysadvisor/plugin/qosaware/reporter"
@@ -379,7 +380,7 @@ func (cs *cpuServer) assembleCgroupConfig(advisorResp *types.InternalCPUCalculat
 				CgroupPath: common.GetReclaimRelativeRootCgroupPath(cs.reclaimRelativeRootCgroupPath, numaID),
 				CalculationResult: &advisorsvc.CalculationResult{
 					Values: map[string]string{
-						string(cpuadvisor.ControlKnobKeyCgroupConfig): string(bytes),
+						string(controlknob.ControlKnobKeyCgroupConfig): string(bytes),
 					},
 				},
 			})
@@ -396,7 +397,7 @@ func (cs *cpuServer) assembleHeadroom() *advisorsvc.CalculationInfo {
 		return nil
 	}
 
-	numaHeadroom := make(cpuadvisor.CPUNUMAHeadroom)
+	numaHeadroom := make(controlknob.CPUNUMAHeadroom)
 	for numaID, res := range numaAllocatable {
 		numaHeadroom[numaID] = float64(res.Value()) / 1000.0
 	}
@@ -408,7 +409,7 @@ func (cs *cpuServer) assembleHeadroom() *advisorsvc.CalculationInfo {
 
 	calculationResult := &advisorsvc.CalculationResult{
 		Values: map[string]string{
-			string(cpuadvisor.ControlKnobKeyCPUNUMAHeadroom): string(data),
+			string(controlknob.ControlKnobKeyCPUNUMAHeadroom): string(data),
 		},
 	}
 

@@ -31,7 +31,7 @@ import (
 	resource2 "k8s.io/apimachinery/pkg/api/resource"
 
 	"github.com/kubewharf/katalyst-core/pkg/agent/qrm-plugins/advisorsvc"
-	advisorapi "github.com/kubewharf/katalyst-core/pkg/agent/qrm-plugins/cpu/dynamicpolicy/cpuadvisor"
+	advisorapi "github.com/kubewharf/katalyst-core/pkg/agent/qrm-plugins/cpu/dynamicpolicy/controlknob"
 	"github.com/kubewharf/katalyst-core/pkg/metaserver"
 	"github.com/kubewharf/katalyst-core/pkg/metaserver/agent"
 	"github.com/kubewharf/katalyst-core/pkg/metaserver/agent/pod"
@@ -108,7 +108,7 @@ func TestDynamicPolicy_checkAndApplyIfCgroupV1(t *testing.T) {
 		mockey.Mock((*DynamicPolicy).getPodAndRelativePath).IncludeCurrentGoRoutine().Return(mockPod, "test_relative_path", nil).Build()
 		mockey.Mock((*DynamicPolicy).checkAndApplyAllPodsQuota).IncludeCurrentGoRoutine().Return(nil).Build()
 
-		err := p.checkAndApplyIfCgroupV1(mockCal, resources)
+		err := p.checkAndApplyIfCgroupV1(mockCal.CgroupPath, resources)
 		convey.So(err, convey.ShouldBeNil)
 	})
 
@@ -119,7 +119,7 @@ func TestDynamicPolicy_checkAndApplyIfCgroupV1(t *testing.T) {
 		mockey.Mock((*DynamicPolicy).getPodAndRelativePath).IncludeCurrentGoRoutine().Return(mockPod, "test_relative_path", nil).Build()
 		mockey.Mock((*DynamicPolicy).checkAndApplyAllPodsQuota).IncludeCurrentGoRoutine().Return(nil).Build()
 
-		err := p.checkAndApplyIfCgroupV1(mockCal, resources)
+		err := p.checkAndApplyIfCgroupV1(mockCal.CgroupPath, resources)
 		convey.So(err, convey.ShouldBeNil)
 	})
 }
