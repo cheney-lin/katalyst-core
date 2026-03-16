@@ -412,6 +412,7 @@ const (
 	MetricCPUShareCgroup           = "cpu.share.cgroup"
 	MetricCPUQuotaCgroup           = "cpu.quota.cgroup"
 	MetricCPUPeriodCgroup          = "cpu.period.cgroup"
+	MetricCPUAcctUsage             = "cpu.acct.usage,cgroup"
 	MetricCPUNrThrottledCgroup     = "cpu.nr.throttled.cgroup"
 	MetricCPUThrottledPeriodCgroup = "cpu.throttled.period.cgroup"
 	MetricCPUThrottledTimeCgroup   = "cpu.throttled.time.cgroup"

@@ -31,6 +31,7 @@ import (
 	"github.com/kubewharf/katalyst-core/pkg/metaserver"
 	"github.com/kubewharf/katalyst-core/pkg/metrics"
 	"github.com/kubewharf/katalyst-core/pkg/util/cgroup/common"
+	"github.com/kubewharf/katalyst-core/pkg/util/duma"
 	"github.com/kubewharf/katalyst-core/pkg/util/general"
 	"github.com/kubewharf/katalyst-core/pkg/util/machine"
 )
@@ -68,6 +69,15 @@ func (p *PolicyDynamicQuota) updateForCPUQuota() error {
 		return err
 	}
 	reclaimCoresCPUUsage := data.Value
+
+	sid := duma.GetSid()
+	if sid != "" {
+		data, err = p.metaServer.GetDumaCgroupMetric(sid, reclaimPath, pkgconsts.MetricCPUUsageCgroup)
+		if err != nil {
+			return err
+		}
+		reclaimCoresCPUUsage = data.Value
+	}
 
 	var reclaimNUMACPUSize int
 	// get reclaim cpu size instead of numa cpuset size if reclaim pool exist to avoid unavailable cpu

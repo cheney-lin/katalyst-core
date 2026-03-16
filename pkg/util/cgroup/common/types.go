@@ -183,8 +183,9 @@ type MemoryStats struct {
 
 // CPUStats get cgroup cpu data
 type CPUStats struct {
-	CpuPeriod uint64
-	CpuQuota  int64
+	CpuPeriod    uint64
+	CpuQuota     int64
+	CpuAcctUsage uint64
 }
 
 // CPUSetStats get cgroup cpuset data

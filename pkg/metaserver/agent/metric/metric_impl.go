@@ -361,6 +361,10 @@ func (f *MetricsFetcherImpl) GetCgroupMetric(cgroupPath, metricName string) (uti
 	return f.checkMetricDataExpire(f.metricStore.GetCgroupMetric(cgroupPath, metricName))
 }
 
+func (f *MetricsFetcherImpl) GetDumaCgroupMetric(sid, cgroupPath, metricName string) (utilmetric.MetricData, error) {
+	return f.checkMetricDataExpire(f.metricStore.GetDumaCgroupMetric(sid, cgroupPath, metricName))
+}
+
 func (f *MetricsFetcherImpl) GetCgroupNumaMetric(cgroupPath string, numaNode int, metricName string) (utilmetric.MetricData, error) {
 	return f.checkMetricDataExpire(f.metricStore.GetCgroupNumaMetric(cgroupPath, numaNode, metricName))
 }

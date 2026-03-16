@@ -98,6 +98,8 @@ type MetricsReader interface {
 	// GetCgroupNumaMetric get NUMA metric of qos class: /kubepods/burstable, /kubepods/besteffort, etc.
 	GetCgroupNumaMetric(cgroupPath string, numaNode int, metricName string) (metric.MetricData, error)
 
+	GetDumaCgroupMetric(sid, cgroupPath, metricName string) (metric.MetricData, error)
+
 	HasSynced() bool
 }
 

@@ -185,6 +185,10 @@ func (f *FakeMetricsFetcher) GetCgroupMetric(cgroupPath, metricName string) (met
 	return f.metricStore.GetCgroupMetric(cgroupPath, metricName)
 }
 
+func (f *FakeMetricsFetcher) GetDumaCgroupMetric(sid, cgroupPath, metricName string) (metric.MetricData, error) {
+	return f.metricStore.GetDumaCgroupMetric(sid, cgroupPath, metricName)
+}
+
 func (f *FakeMetricsFetcher) SetCgroupNumaMetric(cgroupPath string, numaNode int, metricName string, data metric.MetricData) {
 	f.metricStore.SetCgroupNumaMetric(cgroupPath, numaNode, metricName, data)
 }

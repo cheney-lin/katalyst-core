@@ -52,6 +52,7 @@ type MetricStore struct {
 	cgroupMetricMap           map[string]map[string]MetricData                    // map[cgroupPath]map[metricName]value
 	cgroupNumaMetricMap       map[string]map[int]map[string]MetricData            // map[cgroupPath]map[numaNode]map[metricName]value
 	stringIndexedMetricMap    map[string]interface{}
+	dumaCgroupMetricMap       map[string]map[string]map[string]MetricData // map[sid]map[cgroupPath]map[metricName]value
 }
 
 func NewMetricStore() *MetricStore {
@@ -67,6 +68,7 @@ func NewMetricStore() *MetricStore {
 		cgroupMetricMap:           make(map[string]map[string]MetricData),
 		cgroupNumaMetricMap:       make(map[string]map[int]map[string]MetricData),
 		stringIndexedMetricMap:    make(map[string]interface{}),
+		dumaCgroupMetricMap:       make(map[string]map[string]map[string]MetricData),
 	}
 }
 
@@ -331,6 +333,45 @@ func (c *MetricStore) GetCgroupMetric(cgroupPath, metricName string) (MetricData
 		return MetricData{}, fmt.Errorf("[MetricStore] load value for %v failed", metricName)
 	}
 	return data, nil
+}
+
+func (c *MetricStore) SetDumaCgroupMetric(sid, cgroupPath, metricName string, data MetricData) {
+	c.mutex.Lock()
+	defer c.mutex.Unlock()
+
+	dumaMetrics, ok := c.dumaCgroupMetricMap[sid]
+	if !ok {
+		dumaMetrics = make(map[string]map[string]MetricData)
+	}
+	metrics, ok := dumaMetrics[cgroupPath]
+	if !ok {
+		metrics = make(map[string]MetricData)
+	}
+	metrics[metricName] = data
+	dumaMetrics[cgroupPath] = metrics
+	c.dumaCgroupMetricMap[sid] = dumaMetrics
+}
+
+func (c *MetricStore) GetDumaCgroupMetric(sid, cgroupPath, metricName string) (MetricData, error) {
+	c.mutex.RLock()
+	defer c.mutex.RUnlock()
+
+	dumaCgroupMetrics, ok := c.dumaCgroupMetricMap[sid]
+	if !ok {
+		return MetricData{}, fmt.Errorf("[MetricStore] load duma %s failed", sid)
+	}
+
+	metrics, ok := dumaCgroupMetrics[cgroupPath]
+	if !ok {
+		return MetricData{}, fmt.Errorf("[MetricStore] load duma %s cgroup %v failed", sid, cgroupPath)
+	}
+
+	metric, ok := metrics[metricName]
+	if !ok {
+		return MetricData{}, fmt.Errorf("[MetricStore] load duma %s cgroup %v metric %v failed", sid, cgroupPath, metricName)
+	}
+
+	return metric, nil
 }
 
 func (c *MetricStore) SetCgroupNumaMetric(cgroupPath string, numaNode int, metricName string, data MetricData) {

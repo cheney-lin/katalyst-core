@@ -19,6 +19,7 @@ package helper
 import (
 	pkgconsts "github.com/kubewharf/katalyst-core/pkg/consts"
 	"github.com/kubewharf/katalyst-core/pkg/metaserver/agent/metric/types"
+	"github.com/kubewharf/katalyst-core/pkg/util/duma"
 	"github.com/kubewharf/katalyst-core/pkg/util/general"
 	"github.com/kubewharf/katalyst-core/pkg/util/machine"
 	"github.com/kubewharf/katalyst-core/pkg/util/metric"
@@ -39,6 +40,7 @@ type ReclaimMetrics struct {
 }
 
 // GetReclaimMetrics returns the reclaim CPU metrics for the given cpus and cgroupPath
+// TODO: check reclaimed_cores is in duma
 func GetReclaimMetrics(cpus machine.CPUSet, cgroupPath string, metricsFetcher types.MetricsFetcher) (*ReclaimMetrics, error) {
 	data := metricsFetcher.AggregateCoreMetric(cpus, pkgconsts.MetricCPUUsageRatio, metric.AggregatorSum)
 	poolCPUUsage := data.Value
@@ -60,6 +62,27 @@ func GetReclaimMetrics(cpus machine.CPUSet, cgroupPath string, metricsFetcher ty
 		return nil, err
 	}
 	cfsPeriod := data.Value
+
+	sid := duma.GetSid()
+	if sid != "" {
+		data, err = metricsFetcher.GetDumaCgroupMetric(sid, cgroupPath, pkgconsts.MetricCPUUsageCgroup)
+		if err != nil {
+			return nil, err
+		}
+		cgroupCPUUsage = data.Value
+
+		data, err = metricsFetcher.GetDumaCgroupMetric(sid, cgroupPath, pkgconsts.MetricCPUQuotaCgroup)
+		if err != nil {
+			return nil, err
+		}
+		cfsQuota = data.Value
+
+		data, err = metricsFetcher.GetDumaCgroupMetric(sid, cgroupPath, pkgconsts.MetricCPUPeriodCgroup)
+		if err != nil {
+			return nil, err
+		}
+		cfsPeriod = data.Value
+	}
 
 	if cfsQuota > 0 && cfsPeriod > 0 {
 		cfsQuota = cfsQuota / cfsPeriod

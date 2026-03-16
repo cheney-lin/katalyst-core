@@ -419,6 +419,7 @@ func (pa *ProvisionAssemblerCommon) assembleWithoutNUMAExclusivePool(
 
 				reclaimedCoresQuota = general.MaxFloat64(reclaimedCoresQuota, float64(reservedForReclaim))
 			}
+			klog.InfoS("reclaim quota info", "reclaimedCoresSize", reclaimedCoresSize, "shareInfo", shareInfo, "dedicatedInfo", dedicatedInfo, "reclaimedCoresQuota", reclaimedCoresQuota)
 
 			// if cpu quota enabled, set all reclaimable share pool size to reclaimablePoolSizes
 			for poolName := range overlapReclaimSize {

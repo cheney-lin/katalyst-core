@@ -33,6 +33,7 @@ const (
 	MetricProvisionerCgroup  = "cgroup"
 	MetricProvisionerKubelet = "kubelet"
 	MetricProvisionerRodan   = "rodan"
+	MetricProvisionerDuma    = "duma"
 )
 
 type MetricConfiguration struct {

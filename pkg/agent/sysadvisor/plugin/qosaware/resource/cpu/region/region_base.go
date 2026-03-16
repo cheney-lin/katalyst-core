@@ -20,6 +20,7 @@ import (
 	"context"
 	"fmt"
 	"math"
+	"path/filepath"
 	"sync"
 
 	"go.uber.org/atomic"
@@ -46,6 +47,7 @@ import (
 	"github.com/kubewharf/katalyst-core/pkg/metrics"
 	"github.com/kubewharf/katalyst-core/pkg/util/cgroup/common"
 	cgroupmgr "github.com/kubewharf/katalyst-core/pkg/util/cgroup/manager"
+	"github.com/kubewharf/katalyst-core/pkg/util/duma"
 	"github.com/kubewharf/katalyst-core/pkg/util/general"
 	"github.com/kubewharf/katalyst-core/pkg/util/machine"
 	"github.com/kubewharf/katalyst-core/pkg/util/native"
@@ -966,6 +968,16 @@ func (r *QoSRegionBase) getEffectiveReclaimResource() (quota float64, cpusetSize
 	cpuStats, err := cgroupmgr.GetCPUWithRelativePath(reclaimPath)
 	if err != nil {
 		return 0, 0, err
+	}
+
+	sid := duma.GetSid()
+	if sid != "" {
+		absCgroupPath := filepath.Join(common.CgroupFSMountPoint, common.CgroupSubsysCPU, reclaimPath)
+		cpuStats, err = cgroupmgr.GetDumaManager(sid).GetCPU(absCgroupPath)
+		if err != nil {
+			return 0, 0, err
+		}
+		klog.InfoS("get cpu stats", "cpuStats", cpuStats)
 	}
 	if cpuStats.CpuQuota == math.MaxInt || cpuStats.CpuQuota == common.CPUQuotaUnlimit || !quotaCtrlKnobEnabled {
 		quota = common.CPUQuotaUnlimit

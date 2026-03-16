@@ -89,6 +89,8 @@ func (r *QoSRegionShare) TryUpdateProvision() {
 	// restrict control knobs by reference policy
 	restrictedControlKnobs := r.restrictProvisionControlKnob(rawControlKnobs)
 
+	klog.InfoS("[TryUpdateProvision]", "rawControlKnobs", rawControlKnobs, "restrictedControlKnobs", restrictedControlKnobs)
+
 	// regulate control knobs
 	r.regulateProvisionControlKnob(restrictedControlKnobs, r.getEffectiveControlKnobs())
 }
