@@ -119,6 +119,9 @@ func (p *PolicyNUMAAware) Update() (err error) {
 
 		numaReclaimable := free + inactiveFile*dynamicConfig.CacheBasedRatio
 
+		// hack
+		numaReclaimable = float64(total) / 3
+
 		general.InfoS("NUMA memory info", "numaID", numaID,
 			"total", general.FormatMemoryQuantity(total), "free", general.FormatMemoryQuantity(free),
 			"inactiveFile", general.FormatMemoryQuantity(inactiveFile), "CacheBasedRatio", dynamicConfig.CacheBasedRatio,
