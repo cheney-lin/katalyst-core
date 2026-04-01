@@ -27,6 +27,7 @@ const (
 	ControlKnobKeySwapMax            MemoryControlKnobName = "swap_max"
 	ControlKnowKeyMemoryOffloading   MemoryControlKnobName = "memory_offloading"
 	ControlKnobKeyMemoryNUMAHeadroom MemoryControlKnobName = "memory_numa_headroom"
+	ControlKnobKeyMemoryHigh         MemoryControlKnobName = "memory_high"
 )
 
 type MemoryNUMAHeadroom map[int]int64
