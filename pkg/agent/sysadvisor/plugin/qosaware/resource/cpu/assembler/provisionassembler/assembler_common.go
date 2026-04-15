@@ -195,32 +195,79 @@ func (pa *ProvisionAssemblerCommon) assembleNUMABindingNUMAExclusive(regionHelpe
 	return nil
 }
 
+type poolCalculationContext struct {
+	shareInfo                              regionInfo
+	isolationInfo                          isolationRegionInfo
+	dedicatedInfo                          regionInfo
+	nodeEnableReclaim                      bool
+	numaID                                 int
+	reservedForReclaim                     int
+	shareAndIsolatedDedicatedPoolAvailable int
+	sharePoolSizeRequirements              map[string]int
+	isolationPoolSizes                     map[string]int
+	allowExpand                            bool
+	shareAndIsolateDedicatedPoolSizes      map[string]int
+	dedicatedPoolSizes                     map[string]int
+	dedicatedPoolAvailable                 int
+	dedicatedReclaimCoresSize              int
+}
+
+type reclaimPoolResult struct {
+	reclaimedCoresSize        int
+	overlapReclaimedCoresSize int
+	reclaimedCoresQuota       float64
+}
+
 func (pa *ProvisionAssemblerCommon) assembleWithoutNUMAExclusivePool(
 	regionHelper *RegionMapHelper,
 	numaID int,
 	result *types.InternalCPUCalculationResult,
 ) error {
+	ctx, err := pa.extractAndPrepareContext(regionHelper, numaID)
+	if err != nil {
+		return err
+	}
+
+	if ctx == nil {
+		return nil
+	}
+
+	pa.fillPoolEntries(ctx, result)
+
+	reclaimResult, err := pa.assembleReclaimPool(ctx, result)
+	if err != nil {
+		return err
+	}
+
+	pa.finalizeReclaimPool(ctx, reclaimResult, result)
+
+	return nil
+}
+
+func (pa *ProvisionAssemblerCommon) extractAndPrepareContext(
+	regionHelper *RegionMapHelper,
+	numaID int,
+) (*poolCalculationContext, error) {
 	shareRegions := regionHelper.GetRegions(numaID, configapi.QoSRegionTypeShare)
 	shareInfo, err := extractShareRegionInfo(shareRegions)
 	if err != nil {
-		return err
+		return nil, err
 	}
 
 	isolationRegions := regionHelper.GetRegions(numaID, configapi.QoSRegionTypeIsolation)
 	isolationInfo, err := extractIsolationRegionInfo(isolationRegions)
 	if err != nil {
-		return err
+		return nil, err
 	}
 
 	dedicatedRegions := regionHelper.GetRegions(numaID, configapi.QoSRegionTypeDedicated)
 	dedicatedInfo, err := extractDedicatedRegionInfo(dedicatedRegions)
 	if err != nil {
-		return err
+		return nil, err
 	}
 
-	// skip empty numa binding region
 	if len(shareRegions) == 0 && len(isolationRegions) == 0 && len(dedicatedRegions) == 0 && numaID != commonstate.FakedNUMAID {
-		return nil
+		return nil, nil
 	}
 
 	nodeEnableReclaim := pa.conf.GetDynamicConfiguration().EnableReclaim
@@ -241,8 +288,6 @@ func (pa *ProvisionAssemblerCommon) assembleWithoutNUMAExclusivePool(
 
 	isolationUppers := general.SumUpMapValues(isolationInfo.isolationUpperSizes)
 	isolationPoolSizes := isolationInfo.isolationUpperSizes
-	// if the maximum of share sharePoolSizeRequirements and share requests adds up with isolation upper sizes is larger than
-	// the available cores of share and isolated pool, we should shrink the isolation pool sizes to lower sizes
 	if general.Max(general.SumUpMapValues(shareInfo.requests), general.SumUpMapValues(shareInfo.requirements))+isolationUppers >
 		shareAndIsolatedDedicatedPoolAvailable-general.SumUpMapValues(dedicatedInfo.requests) {
 		isolationPoolSizes = isolationInfo.isolationLowerSizes
@@ -291,217 +336,255 @@ func (pa *ProvisionAssemblerCommon) assembleWithoutNUMAExclusivePool(
 		"shareAndIsolateDedicatedPoolSizes", shareAndIsolateDedicatedPoolSizes,
 		"shareAndIsolatedDedicatedPoolAvailable", shareAndIsolatedDedicatedPoolAvailable)
 
-	// fill in regulated share-and-isolated pool entries
-	for poolName, poolSize := range shareAndIsolateDedicatedPoolSizes {
-		if podSet, ok := dedicatedInfo.podSet[poolName]; ok {
-			// fill in dedicated pool entries with pod uid for each pod
+	return &poolCalculationContext{
+		shareInfo:                              shareInfo,
+		isolationInfo:                          isolationInfo,
+		dedicatedInfo:                          dedicatedInfo,
+		nodeEnableReclaim:                      nodeEnableReclaim,
+		numaID:                                 numaID,
+		reservedForReclaim:                     reservedForReclaim,
+		shareAndIsolatedDedicatedPoolAvailable: shareAndIsolatedDedicatedPoolAvailable,
+		sharePoolSizeRequirements:              sharePoolSizeRequirements,
+		isolationPoolSizes:                     isolationPoolSizes,
+		allowExpand:                            allowExpand,
+		shareAndIsolateDedicatedPoolSizes:      shareAndIsolateDedicatedPoolSizes,
+		dedicatedPoolSizes:                     dedicatedPoolSizes,
+		dedicatedPoolAvailable:                 dedicatedPoolAvailable,
+		dedicatedReclaimCoresSize:              dedicatedReclaimCoresSize,
+	}, nil
+}
+
+func (pa *ProvisionAssemblerCommon) fillPoolEntries(
+	ctx *poolCalculationContext,
+	result *types.InternalCPUCalculationResult,
+) {
+	for poolName, poolSize := range ctx.shareAndIsolateDedicatedPoolSizes {
+		if podSet, ok := ctx.dedicatedInfo.podSet[poolName]; ok {
 			for uid := range podSet {
-				result.SetPoolEntry(uid, numaID, poolSize, -1)
+				result.SetPoolEntry(uid, ctx.numaID, poolSize, -1)
 			}
 		} else {
-			// fill in share pool or isolation pool entries with pool name for each pod
-			result.SetPoolEntry(poolName, numaID, poolSize, -1)
+			result.SetPoolEntry(poolName, ctx.numaID, poolSize, -1)
+		}
+	}
+}
+
+type overlapPoolContext struct {
+	ctx    *poolCalculationContext
+	result *types.InternalCPUCalculationResult
+}
+
+func (pa *ProvisionAssemblerCommon) assembleReclaimPool(ctx *poolCalculationContext, result *types.InternalCPUCalculationResult) (*reclaimPoolResult, error) {
+	if *pa.allowSharedCoresOverlapReclaimedCores {
+		return pa.assembleReclaimPoolWithOverlap(ctx, result)
+	}
+	return pa.assembleReclaimPoolWithoutOverlap(ctx, result)
+}
+
+func (pa *ProvisionAssemblerCommon) assembleReclaimPoolWithOverlap(ctx *poolCalculationContext, result *types.InternalCPUCalculationResult) (*reclaimPoolResult, error) {
+	isolated := 0
+	poolSizes := make(map[string]int)
+	sharePoolSizes := make(map[string]int)
+	reclaimablePoolSizes := make(map[string]int)
+	nonReclaimableSharePoolSizes := make(map[string]int)
+	reclaimableShareRequirements := make(map[string]int)
+	reclaimableRequirements := make(map[string]int)
+
+	for poolName, size := range ctx.shareAndIsolateDedicatedPoolSizes {
+		if _, ok := ctx.sharePoolSizeRequirements[poolName]; ok {
+			if ctx.shareInfo.reclaimEnable[poolName] {
+				reclaimablePoolSizes[poolName] = size
+				reclaimableShareRequirements[poolName] = ctx.shareInfo.requirements[poolName]
+				reclaimableRequirements[poolName] = ctx.shareInfo.requirements[poolName]
+			} else {
+				nonReclaimableSharePoolSizes[poolName] = size
+			}
+			poolSizes[poolName] = size
+			sharePoolSizes[poolName] = size
+		}
+
+		if _, ok := ctx.isolationPoolSizes[poolName]; ok {
+			isolated += size
+		}
+
+		if _, ok := ctx.dedicatedInfo.requests[poolName]; ok {
+			if ctx.dedicatedInfo.reclaimEnable[poolName] {
+				reclaimablePoolSizes[poolName] = size
+				reclaimableRequirements[poolName] = ctx.dedicatedInfo.requirements[poolName]
+			}
+			poolSizes[poolName] = size
 		}
 	}
 
-	// assemble reclaim pool
-	var reclaimedCoresSize, overlapReclaimedCoresSize int
-	reclaimedCoresQuota := float64(-1)
-	if *pa.allowSharedCoresOverlapReclaimedCores {
-		isolated := 0
-		poolSizes := make(map[string]int)
-		sharePoolSizes := make(map[string]int)
-		reclaimablePoolSizes := make(map[string]int)
-		nonReclaimableSharePoolSizes := make(map[string]int)
-		reclaimableShareRequirements := make(map[string]int)
-		reclaimableRequirements := make(map[string]int)
-		for poolName, size := range shareAndIsolateDedicatedPoolSizes {
-			_, ok := sharePoolSizeRequirements[poolName]
-			if ok {
-				if shareInfo.reclaimEnable[poolName] {
-					reclaimablePoolSizes[poolName] = size
-					reclaimableShareRequirements[poolName] = shareInfo.requirements[poolName]
-					reclaimableRequirements[poolName] = shareInfo.requirements[poolName]
-				} else {
-					nonReclaimableSharePoolSizes[poolName] = size
-				}
-				poolSizes[poolName] = size
-				sharePoolSizes[poolName] = size
-			}
+	overlapReclaimSize := make(map[string]int)
+	shareReclaimCoresSize := ctx.shareAndIsolatedDedicatedPoolAvailable - isolated -
+		general.SumUpMapValues(nonReclaimableSharePoolSizes) - general.SumUpMapValues(reclaimableShareRequirements) -
+		general.SumUpMapValues(ctx.dedicatedPoolSizes)
 
-			_, ok = isolationPoolSizes[poolName]
-			if ok {
-				isolated += size
+	var reclaimedCoresSize int
+	if ctx.nodeEnableReclaim {
+		reclaimedCoresSize = shareReclaimCoresSize + ctx.dedicatedReclaimCoresSize
+		if reclaimedCoresSize < ctx.reservedForReclaim {
+			reclaimedCoresSize = ctx.reservedForReclaim
+			regulatedOverlapReclaimPoolSize, err := regulateOverlapReclaimPoolSize(poolSizes, reclaimedCoresSize)
+			if err != nil {
+				return nil, fmt.Errorf("failed to regulateOverlapReclaimPoolSize for NUMAs reserved for reclaim: %w", err)
 			}
-
-			_, ok = dedicatedInfo.requests[poolName]
-			if ok {
-				if dedicatedInfo.reclaimEnable[poolName] {
-					reclaimablePoolSizes[poolName] = size
-					reclaimableRequirements[poolName] = dedicatedInfo.requirements[poolName]
-				}
-				poolSizes[poolName] = size
-			}
-		}
-
-		overlapReclaimSize := make(map[string]int)
-		// shareReclaimCoresSize is the size of cores that can be reclaimed from share pools
-		shareReclaimCoresSize := shareAndIsolatedDedicatedPoolAvailable - isolated -
-			general.SumUpMapValues(nonReclaimableSharePoolSizes) - general.SumUpMapValues(reclaimableShareRequirements) -
-			general.SumUpMapValues(dedicatedPoolSizes)
-		if nodeEnableReclaim {
-			reclaimedCoresSize = shareReclaimCoresSize + dedicatedReclaimCoresSize
-			if reclaimedCoresSize < reservedForReclaim {
-				reclaimedCoresSize = reservedForReclaim
-				regulatedOverlapReclaimPoolSize, err := regulateOverlapReclaimPoolSize(poolSizes, reclaimedCoresSize)
-				if err != nil {
-					return fmt.Errorf("failed to regulateOverlapReclaimPoolSize for NUMAs reserved for reclaim: %w", err)
-				}
-				overlapReclaimSize = regulatedOverlapReclaimPoolSize
-			} else {
-				for poolName, size := range reclaimablePoolSizes {
-					requirement, ok := reclaimableRequirements[poolName]
-					if !ok {
-						continue
-					}
-
-					// calculate the reclaim size for each share pool by subtracting the share requirement from the share pool size
-					reclaimSize := size - requirement
-					if reclaimSize > 0 {
-						overlapReclaimSize[poolName] = reclaimSize
-					} else {
-						overlapReclaimSize[poolName] = 1
-					}
-				}
-			}
+			overlapReclaimSize = regulatedOverlapReclaimPoolSize
 		} else {
-			reclaimedCoresSize = reservedForReclaim
-			if len(poolSizes) > 0 && reclaimedCoresSize > shareReclaimCoresSize {
-				// only if reclaimedCoresSize > shareReclaimCoresSize, overlap reclaim pool with both share pool and dedicated pool
-				reclaimedCoresSize = general.Min(reclaimedCoresSize, general.SumUpMapValues(poolSizes))
-				var overlapSharePoolSizes map[string]int
-				if reclaimedCoresSize <= general.SumUpMapValues(reclaimablePoolSizes) {
-					overlapSharePoolSizes = reclaimablePoolSizes
+			for poolName, size := range reclaimablePoolSizes {
+				requirement, ok := reclaimableRequirements[poolName]
+				if !ok {
+					continue
+				}
+				reclaimSize := size - requirement
+				if reclaimSize > 0 {
+					overlapReclaimSize[poolName] = reclaimSize
 				} else {
-					overlapSharePoolSizes = poolSizes
+					overlapReclaimSize[poolName] = 1
 				}
-
-				reclaimSizes, err := regulateOverlapReclaimPoolSize(overlapSharePoolSizes, reclaimedCoresSize)
-				if err != nil {
-					return fmt.Errorf("failed to regulateOverlapReclaimPoolSize: %w", err)
-				}
-				overlapReclaimSize = reclaimSizes
-			} else if len(sharePoolSizes) > 0 && reclaimedCoresSize <= general.SumUpMapValues(sharePoolSizes) {
-				// if exit share pool, and reclaimedCoresSize <= sum of share pool size, overlap reclaim pool with share pool
-				reclaimSizes, err := regulateOverlapReclaimPoolSize(sharePoolSizes, reclaimedCoresSize)
-				if err != nil {
-					return fmt.Errorf("failed to regulateOverlapReclaimPoolSize: %w", err)
-				}
-				overlapReclaimSize = reclaimSizes
-			}
-		}
-
-		quotaCtrlKnobEnabled, err := metacache.IsQuotaCtrlKnobEnabled(pa.metaReader)
-		if err != nil {
-			return err
-		}
-
-		if quotaCtrlKnobEnabled && numaID != commonstate.FakedNUMAID && len(poolSizes) > 0 {
-			reclaimedCoresQuota = float64(general.Max(reservedForReclaim, reclaimedCoresSize))
-			if shareInfo.minReclaimedCoresCPUQuota != -1 || dedicatedInfo.minReclaimedCoresCPUQuota != -1 {
-				if shareInfo.minReclaimedCoresCPUQuota != -1 {
-					reclaimedCoresQuota = shareInfo.minReclaimedCoresCPUQuota
-				}
-
-				if dedicatedInfo.minReclaimedCoresCPUQuota != -1 {
-					reclaimedCoresQuota = general.MinFloat64(reclaimedCoresQuota, dedicatedInfo.minReclaimedCoresCPUQuota)
-				}
-
-				reclaimedCoresQuota = general.MaxFloat64(reclaimedCoresQuota, float64(reservedForReclaim))
-			}
-
-			// if cpu quota enabled, set all reclaimable share pool size to reclaimablePoolSizes
-			for poolName := range overlapReclaimSize {
-				overlapReclaimSize[poolName] = general.Max(overlapReclaimSize[poolName], reclaimablePoolSizes[poolName])
-			}
-		}
-
-		for overlapPoolName, reclaimSize := range overlapReclaimSize {
-			if _, ok := shareInfo.requests[overlapPoolName]; ok {
-				general.InfoS("set pool overlap info",
-					"poolName", commonstate.PoolNameReclaim,
-					"numaID", numaID,
-					"poolName", overlapPoolName,
-					"reclaimSize", reclaimSize)
-				result.SetPoolOverlapInfo(commonstate.PoolNameReclaim, numaID, overlapPoolName, reclaimSize)
-				overlapReclaimedCoresSize += reclaimSize
-				continue
-			}
-
-			if podSet, ok := dedicatedInfo.podSet[overlapPoolName]; ok {
-				// set pool overlap info for dedicated pool
-				for podUID, containerSet := range podSet {
-					for containerName := range containerSet {
-						general.InfoS("set pool overlap pod container info",
-							"poolName", commonstate.PoolNameReclaim,
-							"numaID", numaID,
-							"podUID", podUID,
-							"containerName", containerName,
-							"reclaimSize", reclaimSize)
-						result.SetPoolOverlapPodContainerInfo(commonstate.PoolNameReclaim, numaID, podUID, containerName, reclaimSize)
-					}
-				}
-				overlapReclaimedCoresSize += reclaimSize
-				continue
 			}
 		}
 	} else {
-		if nodeEnableReclaim {
-			for poolName, size := range dedicatedInfo.requests {
-				if dedicatedInfo.reclaimEnable[poolName] {
-					reclaimSize := size - dedicatedInfo.requirements[poolName]
-					if reclaimSize <= 0 {
-						continue
-					}
-					if podSet, ok := dedicatedInfo.podSet[poolName]; ok {
-						// set pool overlap info for dedicated pool
-						for podUID, containerSet := range podSet {
-							for containerName := range containerSet {
-								general.InfoS("set pool overlap pod container info",
-									"poolName", commonstate.PoolNameReclaim,
-									"numaID", numaID,
-									"podUID", podUID,
-									"containerName", containerName,
-									"reclaimSize", reclaimSize)
-								result.SetPoolOverlapPodContainerInfo(commonstate.PoolNameReclaim, numaID, podUID, containerName, reclaimSize)
-							}
-						}
-						overlapReclaimedCoresSize += reclaimSize
-						continue
-					}
-				}
+		reclaimedCoresSize = ctx.reservedForReclaim
+		if len(poolSizes) > 0 && reclaimedCoresSize > shareReclaimCoresSize {
+			reclaimedCoresSize = general.Min(reclaimedCoresSize, general.SumUpMapValues(poolSizes))
+			var overlapSharePoolSizes map[string]int
+			if reclaimedCoresSize <= general.SumUpMapValues(reclaimablePoolSizes) {
+				overlapSharePoolSizes = reclaimablePoolSizes
+			} else {
+				overlapSharePoolSizes = poolSizes
 			}
-
-			shareReclaimedCoresSize := shareAndIsolatedDedicatedPoolAvailable - general.SumUpMapValues(shareAndIsolateDedicatedPoolSizes)
-			reclaimedCoresSize = shareReclaimedCoresSize + dedicatedReclaimCoresSize + reservedForReclaim
-		} else {
-			reclaimedCoresSize = reservedForReclaim
+			reclaimSizes, err := regulateOverlapReclaimPoolSize(overlapSharePoolSizes, reclaimedCoresSize)
+			if err != nil {
+				return nil, fmt.Errorf("failed to regulateOverlapReclaimPoolSize: %w", err)
+			}
+			overlapReclaimSize = reclaimSizes
+		} else if len(sharePoolSizes) > 0 && reclaimedCoresSize <= general.SumUpMapValues(sharePoolSizes) {
+			reclaimSizes, err := regulateOverlapReclaimPoolSize(sharePoolSizes, reclaimedCoresSize)
+			if err != nil {
+				return nil, fmt.Errorf("failed to regulateOverlapReclaimPoolSize: %w", err)
+			}
+			overlapReclaimSize = reclaimSizes
 		}
 	}
 
-	// nonOverlapReclaimedCoresSize should be non-negative
-	nonOverlapReclaimedCoresSize := general.Max(reclaimedCoresSize-overlapReclaimedCoresSize, 0)
-	result.SetPoolEntry(commonstate.PoolNameReclaim, numaID, nonOverlapReclaimedCoresSize, reclaimedCoresQuota)
+	reclaimedCoresQuota := float64(-1)
+	quotaCtrlKnobEnabled, err := metacache.IsQuotaCtrlKnobEnabled(pa.metaReader)
+	if err != nil {
+		return nil, err
+	}
+
+	if quotaCtrlKnobEnabled && ctx.numaID != commonstate.FakedNUMAID && len(poolSizes) > 0 {
+		reclaimedCoresQuota = float64(general.Max(ctx.reservedForReclaim, reclaimedCoresSize))
+		if ctx.shareInfo.minReclaimedCoresCPUQuota != -1 || ctx.dedicatedInfo.minReclaimedCoresCPUQuota != -1 {
+			if ctx.shareInfo.minReclaimedCoresCPUQuota != -1 {
+				reclaimedCoresQuota = ctx.shareInfo.minReclaimedCoresCPUQuota
+			}
+			if ctx.dedicatedInfo.minReclaimedCoresCPUQuota != -1 {
+				reclaimedCoresQuota = general.MinFloat64(reclaimedCoresQuota, ctx.dedicatedInfo.minReclaimedCoresCPUQuota)
+			}
+			reclaimedCoresQuota = general.MaxFloat64(reclaimedCoresQuota, float64(ctx.reservedForReclaim))
+		}
+		for poolName := range overlapReclaimSize {
+			overlapReclaimSize[poolName] = general.Max(overlapReclaimSize[poolName], reclaimablePoolSizes[poolName])
+		}
+	}
+
+	overlapReclaimedCoresSize := 0
+	for overlapPoolName, reclaimSize := range overlapReclaimSize {
+		if _, ok := ctx.shareInfo.requests[overlapPoolName]; ok {
+			general.InfoS("set pool overlap info",
+				"poolName", commonstate.PoolNameReclaim,
+				"numaID", ctx.numaID,
+				"poolName", overlapPoolName,
+				"reclaimSize", reclaimSize)
+			result.SetPoolOverlapInfo(commonstate.PoolNameReclaim, ctx.numaID, overlapPoolName, reclaimSize)
+			overlapReclaimedCoresSize += reclaimSize
+			continue
+		}
+
+		if podSet, ok := ctx.dedicatedInfo.podSet[overlapPoolName]; ok {
+			for podUID, containerSet := range podSet {
+				for containerName := range containerSet {
+					general.InfoS("set pool overlap pod container info",
+						"poolName", commonstate.PoolNameReclaim,
+						"numaID", ctx.numaID,
+						"podUID", podUID,
+						"containerName", containerName,
+						"reclaimSize", reclaimSize)
+					result.SetPoolOverlapPodContainerInfo(commonstate.PoolNameReclaim, ctx.numaID, podUID, containerName, reclaimSize)
+				}
+			}
+			overlapReclaimedCoresSize += reclaimSize
+			continue
+		}
+	}
+
+	return &reclaimPoolResult{
+		reclaimedCoresSize:        reclaimedCoresSize,
+		overlapReclaimedCoresSize: overlapReclaimedCoresSize,
+		reclaimedCoresQuota:       reclaimedCoresQuota,
+	}, nil
+}
+
+func (pa *ProvisionAssemblerCommon) assembleReclaimPoolWithoutOverlap(ctx *poolCalculationContext, result *types.InternalCPUCalculationResult) (*reclaimPoolResult, error) {
+	var reclaimedCoresSize, overlapReclaimedCoresSize int
+	reclaimedCoresQuota := float64(-1)
+
+	if ctx.nodeEnableReclaim {
+		for poolName, size := range ctx.dedicatedInfo.requests {
+			if ctx.dedicatedInfo.reclaimEnable[poolName] {
+				reclaimSize := size - ctx.dedicatedInfo.requirements[poolName]
+				if reclaimSize <= 0 {
+					continue
+				}
+				if podSet, ok := ctx.dedicatedInfo.podSet[poolName]; ok {
+					for podUID, containerSet := range podSet {
+						for containerName := range containerSet {
+							general.InfoS("set pool overlap pod container info",
+								"poolName", commonstate.PoolNameReclaim,
+								"numaID", ctx.numaID,
+								"podUID", podUID,
+								"containerName", containerName,
+								"reclaimSize", reclaimSize)
+							result.SetPoolOverlapPodContainerInfo(commonstate.PoolNameReclaim, ctx.numaID, podUID, containerName, reclaimSize)
+						}
+					}
+					overlapReclaimedCoresSize += reclaimSize
+					continue
+				}
+			}
+		}
+
+		shareReclaimedCoresSize := ctx.shareAndIsolatedDedicatedPoolAvailable - general.SumUpMapValues(ctx.shareAndIsolateDedicatedPoolSizes)
+		reclaimedCoresSize = shareReclaimedCoresSize + ctx.dedicatedReclaimCoresSize + ctx.reservedForReclaim
+	} else {
+		reclaimedCoresSize = ctx.reservedForReclaim
+	}
+
+	return &reclaimPoolResult{
+		reclaimedCoresSize:        reclaimedCoresSize,
+		overlapReclaimedCoresSize: overlapReclaimedCoresSize,
+		reclaimedCoresQuota:       reclaimedCoresQuota,
+	}, nil
+}
+
+func (pa *ProvisionAssemblerCommon) finalizeReclaimPool(
+	ctx *poolCalculationContext,
+	reclaimResult *reclaimPoolResult,
+	result *types.InternalCPUCalculationResult,
+) {
+	nonOverlapReclaimedCoresSize := general.Max(reclaimResult.reclaimedCoresSize-reclaimResult.overlapReclaimedCoresSize, 0)
+	result.SetPoolEntry(commonstate.PoolNameReclaim, ctx.numaID, nonOverlapReclaimedCoresSize, reclaimResult.reclaimedCoresQuota)
 
 	general.InfoS("assemble reclaim pool entry",
-		"numaID", numaID,
-		"reservedForReclaim", reservedForReclaim,
-		"reclaimedCoresSize", reclaimedCoresSize,
-		"overlapReclaimedCoresSize", overlapReclaimedCoresSize,
+		"numaID", ctx.numaID,
+		"reservedForReclaim", ctx.reservedForReclaim,
+		"reclaimedCoresSize", reclaimResult.reclaimedCoresSize,
+		"overlapReclaimedCoresSize", reclaimResult.overlapReclaimedCoresSize,
 		"nonOverlapReclaimedCoresSize", nonOverlapReclaimedCoresSize,
-		"reclaimedCoresQuota", reclaimedCoresQuota)
-
-	return nil
+		"reclaimedCoresQuota", reclaimResult.reclaimedCoresQuota)
 }
 
 // regionInfo is a struct that contains region information

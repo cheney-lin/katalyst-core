@@ -14,7 +14,7 @@ See the License for the specific language governing permissions and
 limitations under the License.
 */
 
-package provisionpolicy
+package provision
 
 import (
 	"os"
@@ -69,7 +69,7 @@ func generateDynamicQuotaTestConfiguration(t *testing.T, checkpointDir, stateFil
 
 func newTestPolicyDynamicQuota(t *testing.T, checkpointDir string, stateFileDir string,
 	checkpointManagerDir string, regionInfo types.RegionInfo, metricFetcher metrictypes.MetricsFetcher,
-) ProvisionPolicy {
+) Policy {
 	conf := generateDynamicQuotaTestConfiguration(t, checkpointDir, stateFileDir, checkpointManagerDir)
 
 	metaCacheTmp, err := metacache.NewMetaCacheImp(conf, metricspool.DummyMetricsEmitterPool{}, metricFetcher)

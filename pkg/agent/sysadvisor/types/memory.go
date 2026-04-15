@@ -38,9 +38,10 @@ const (
 	MemoryPressureTuneMemCg MemoryPressureState = 1
 	MemoryPressureDropCache MemoryPressureState = 2
 
-	MemoryHeadroomPolicyNone      MemoryHeadroomPolicyName = "none"
-	MemoryHeadroomPolicyCanonical MemoryHeadroomPolicyName = "canonical"
-	MemoryHeadroomPolicyNUMAAware MemoryHeadroomPolicyName = "numa-aware"
+	MemoryHeadroomPolicyNone       MemoryHeadroomPolicyName = "none"
+	MemoryHeadroomPolicyCanonical  MemoryHeadroomPolicyName = "canonical"
+	MemoryHeadroomPolicyNUMAAware  MemoryHeadroomPolicyName = "numa-aware"
+	MemoryHeadroomPolicyNUMAUsed   MemoryHeadroomPolicyName = "numa-used"
 
 	MemoryProvisionPolicyNone      MemoryProvisionPolicyName = "none"
 	MemoryProvisionPolicyCanonical MemoryProvisionPolicyName = "canonical"
