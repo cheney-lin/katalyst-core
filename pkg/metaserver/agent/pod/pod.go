@@ -158,7 +158,7 @@ func (w *podFetcherImpl) Run(ctx context.Context) {
 	watcherInfo := general.FileWatcherInfo{
 		Path:     w.cgroupRootPaths,
 		Filename: "",
-		Op:       fsnotify.Create,
+		Op:       fsnotify.Create | fsnotify.Remove,
 	}
 
 	general.RegisterHeartbeatCheck(podFetcherKubeletHealthCheckName, tolerationTurns*w.podConf.KubeletPodCacheSyncPeriod,
@@ -291,6 +291,7 @@ func (w *podFetcherImpl) syncRuntimePod(_ context.Context) {
 
 // syncKubeletPod sync local kubelet pod cache from kubelet pod fetcher.
 func (w *podFetcherImpl) syncKubeletPod(ctx context.Context) {
+	klog.Infof("sync kubelet pod")
 	kubeletPods, err := w.kubeletPodFetcher.GetPodList(ctx, nil)
 	_ = general.UpdateHealthzStateByError(podFetcherKubeletHealthCheckName, err)
 	if err != nil {
