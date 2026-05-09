@@ -728,7 +728,7 @@ func (p *DynamicPolicy) getAllContainersRelativePathMap(pod *v1.Pod) map[string]
 			general.Errorf("get container %s container id failed with error: %v", container.Name, err)
 			continue
 		}
-		containerRelativeCgroupPath, err := common.GetContainerRelativeCgroupPath(string(pod.UID), containerID)
+		containerRelativeCgroupPath, err := common.GetContainerRelativeCgroupPath(pod, containerID)
 		if err != nil {
 			general.Errorf("get container %s relative cgroup path failed with error: %v", container.Name, err)
 			continue

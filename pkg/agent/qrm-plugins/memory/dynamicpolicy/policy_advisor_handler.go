@@ -512,7 +512,7 @@ func (p *DynamicPolicy) handleAdvisorDropCache(
 		return nil
 	}
 
-	containerID, err := metaServer.GetContainerID(entryName, subEntryName)
+	pod, containerID, err := metaServer.GetPodContainerID(entryName, subEntryName)
 	if err != nil {
 		return fmt.Errorf("get container id of pod: %s container: %s failed with error: %v", entryName, subEntryName, err)
 	}
@@ -527,7 +527,7 @@ func (p *DynamicPolicy) handleAdvisorDropCache(
 	err = p.asyncWorkers.AddWork(dropCacheWorkName,
 		&asyncworker.Work{
 			Fn:          cgroupmgr.DropCacheWithTimeoutForContainer,
-			Params:      []interface{}{entryName, containerID, dropCacheTimeoutSeconds, GetFullyDropCacheBytes(container)},
+			Params:      []interface{}{pod, containerID, dropCacheTimeoutSeconds, GetFullyDropCacheBytes(container)},
 			DeliveredAt: time.Now(),
 		}, asyncworker.DuplicateWorkPolicyOverride)
 	if err != nil {
@@ -845,13 +845,13 @@ func (p *DynamicPolicy) doNumaMemoryBalance(ctx context.Context, advice types.Nu
 
 	containerStats := make(map[string]*containerMigrateStat)
 	for _, containerInfo := range advice.MigrateContainers {
-		containerID, err := p.metaServer.GetContainerID(containerInfo.PodUID, containerInfo.ContainerName)
+		pod, containerID, err := p.metaServer.GetPodContainerID(containerInfo.PodUID, containerInfo.ContainerName)
 		if err != nil {
 			general.Errorf("get container id of pod: %s container: %s failed with error: %v", containerInfo.PodUID, containerInfo.ContainerName, err)
 			continue
 		}
 
-		memoryAbsCGPath, err := cgroupcommon.GetContainerAbsCgroupPath(cgroupcommon.CgroupSubsysMemory, containerInfo.PodUID, containerID)
+		memoryAbsCGPath, err := cgroupcommon.GetContainerAbsCgroupPath(cgroupcommon.CgroupSubsysMemory, pod, containerID)
 		if err != nil {
 			general.Errorf("GetContainerAbsCgroupPath of pod: %s container: %s failed with error: %v", containerInfo.PodUID, containerInfo.ContainerName, err)
 			continue
@@ -883,7 +883,13 @@ func (p *DynamicPolicy) doNumaMemoryBalance(ctx context.Context, advice types.Nu
 
 			containerNumaSet := machine.NewCPUSet(containerInfo.DestNumaList...)
 			if containerNumaSet.Contains(destNuma) {
-				err = MigratePagesForContainer(ctx, containerInfo.PodUID, stats.ContainerID, p.topology.NumNUMANodes,
+				pod, containerID, err := p.metaServer.GetPodContainerID(containerInfo.PodUID, containerInfo.ContainerName)
+				if err != nil {
+					general.Errorf("get container id of pod: %s container: %s failed with error: %v", containerInfo.PodUID, containerInfo.ContainerName, err)
+					continue
+				}
+
+				err = MigratePagesForContainer(ctx, pod, containerID, p.topology.NumNUMANodes,
 					machine.NewCPUSet(advice.SourceNuma), machine.NewCPUSet(destNuma))
 				if err != nil {
 					general.Errorf("MigratePagesForContainer failed for container[%v/%v] source_numa [%v],dest_numa [%v],err: %v",
@@ -945,11 +951,11 @@ func (p *DynamicPolicy) handleAdvisorMemoryOffloading(_ *config.Configuration,
 
 	if calculationInfo.CgroupPath == "" {
 		memoryOffloadingWorkName = util.GetContainerAsyncWorkName(entryName, subEntryName, memoryPluginAsyncWorkTopicMemoryOffloading)
-		containerID, err := metaServer.GetContainerID(entryName, subEntryName)
+		pod, containerID, err := metaServer.GetPodContainerID(entryName, subEntryName)
 		if err != nil {
 			return fmt.Errorf("GetContainerID failed with error: %v", err)
 		}
-		absCGPath, err = common.GetContainerAbsCgroupPath(common.CgroupSubsysMemory, entryName, containerID)
+		absCGPath, err = common.GetContainerAbsCgroupPath(common.CgroupSubsysMemory, pod, containerID)
 		if err != nil {
 			return fmt.Errorf("GetContainerAbsCgroupPath failed with error: %v", err)
 		}

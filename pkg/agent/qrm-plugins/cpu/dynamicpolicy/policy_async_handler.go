@@ -101,13 +101,13 @@ func (p *DynamicPolicy) checkCPUSet(_ *coreconfig.Configuration,
 				cpuSetStats *cgroupcm.CPUSetStats
 			)
 
-			containerId, err := p.metaServer.GetContainerID(podUID, containerName)
+			pod, containerId, err := p.metaServer.GetPodContainerID(podUID, containerName)
 			if err != nil {
 				general.Errorf("get container id of pod: %s container: %s failed with error: %v", podUID, containerName, err)
 				continue
 			}
 
-			cpusetAbsCGPath, err := common.GetContainerAbsCgroupPath(common.CgroupSubsysCPUSet, podUID, containerId)
+			cpusetAbsCGPath, err := common.GetContainerAbsCgroupPath(common.CgroupSubsysCPUSet, pod, containerId)
 			if err != nil {
 				general.Errorf("get container abs cgroup path of pod: %s container: %s failed with error: %v", podUID, containerName, err)
 				_ = p.emitter.StoreInt64(util.MetricNameCgroupPathNotFound, 1, metrics.MetricTypeNameRaw, tags...)

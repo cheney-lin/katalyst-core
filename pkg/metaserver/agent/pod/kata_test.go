@@ -20,6 +20,9 @@ import (
 	"testing"
 
 	"github.com/stretchr/testify/assert"
+	v1 "k8s.io/api/core/v1"
+	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	"k8s.io/apimachinery/pkg/types"
 )
 
 var (
@@ -150,7 +153,7 @@ func TestKataContainerFetcher_getKataContainerAbsoluteCgroupPath(t *testing.T) {
 		},
 	}
 
-	absPath, err := kataContainerFetcher.getKataContainerAbsoluteCgroupPath("cpu", "12345", "123456")
+	absPath, err := kataContainerFetcher.getKataContainerAbsoluteCgroupPath("cpu", &v1.Pod{ObjectMeta: metav1.ObjectMeta{UID: types.UID("12345")}}, "123456")
 	assert.Equal(t, absPath, "")
 	assert.NotNil(t, err)
 }
@@ -170,7 +173,7 @@ func TestKataContainerFetcher_getKataContainerRelativeCgroupPath(t *testing.T) {
 		},
 	}
 
-	absPath, err := kataContainerFetcher.getKataContainerRelativeCgroupPath("12345", "123456")
+	absPath, err := kataContainerFetcher.getKataContainerRelativeCgroupPath(&v1.Pod{ObjectMeta: metav1.ObjectMeta{UID: types.UID("12345")}}, "123456")
 	assert.Equal(t, absPath, "")
 	assert.NotNil(t, err)
 }

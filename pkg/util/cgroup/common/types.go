@@ -18,6 +18,8 @@ package common
 
 import (
 	"fmt"
+
+	v1 "k8s.io/api/core/v1"
 )
 
 const (
@@ -246,10 +248,10 @@ type CgroupResources struct {
 
 type AbsoluteCgroupPathHandler struct {
 	Name    string
-	Handler func(subsys, podUID, containerId string) (string, error)
+	Handler func(subsys string, pod *v1.Pod, containerId string) (string, error)
 }
 
 type RelativeCgroupPathHandler struct {
 	Name    string
-	Handler func(podUID, containerId string) (string, error)
+	Handler func(pod *v1.Pod, containerId string) (string, error)
 }

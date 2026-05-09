@@ -98,14 +98,14 @@ func (p *DynamicPolicy) getPodContainerInfos(podUID string, entry state.Containe
 		}
 
 		// get the container ID
-		containerID, err := p.metaServer.PodFetcher.GetContainerID(podUID, containerName)
+		_, containerID, err := p.metaServer.PodFetcher.GetPodContainerID(podUID, containerName)
 		if err != nil {
 			general.Warningf("unable to get container id from pod %s/%s: %v", podUID, containerName, err)
 			continue
 		}
 
 		// get the cgroup path
-		cgroupPath, err := common.GetContainerRelativeCgroupPath(podUID, containerID)
+		cgroupPath, err := common.GetContainerRelativeCgroupPath(pod, containerID)
 		if err != nil {
 			general.Warningf("unable to get container cgroup path from pod %s/%s: %v", podUID, containerName, err)
 			continue

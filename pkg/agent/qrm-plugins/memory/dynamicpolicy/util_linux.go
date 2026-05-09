@@ -33,6 +33,7 @@ import (
 	"unsafe"
 
 	"golang.org/x/sys/unix"
+	v1 "k8s.io/api/core/v1"
 	utilerrors "k8s.io/apimachinery/pkg/util/errors"
 	"k8s.io/kubernetes/pkg/kubelet/cm/topologymanager/bitmask"
 
@@ -85,10 +86,10 @@ type smapsInfo struct {
 // MigratePagesForContainer uses SYS_MIGRATE_PAGES syscall to migrate container process memory from
 // sourceNUMAs to destNUMAs, and it may block process when migration. It is deprecated will be
 // removed in a future release.
-func MigratePagesForContainer(ctx context.Context, podUID, containerId string,
+func MigratePagesForContainer(ctx context.Context, pod *v1.Pod, containerId string,
 	numasCount int, sourceNUMAs, destNUMAs machine.CPUSet,
 ) error {
-	memoryAbsCGPath, err := common.GetContainerAbsCgroupPath(common.CgroupSubsysMemory, podUID, containerId)
+	memoryAbsCGPath, err := common.GetContainerAbsCgroupPath(common.CgroupSubsysMemory, pod, containerId)
 	if err != nil {
 		return fmt.Errorf("GetContainerAbsCgroupPath failed with error: %v", err)
 	}
@@ -116,7 +117,7 @@ containerLoop:
 		containerPid, err := strconv.Atoi(containerPidStr)
 		if err != nil {
 			errList = append(errList, fmt.Errorf("pod: %s, container: %s, pid: %s invalid ",
-				podUID, containerId, containerPidStr))
+				pod.Name, containerId, containerPidStr))
 		}
 
 		start := time.Now()
@@ -127,7 +128,7 @@ containerLoop:
 			uintptr(reflect.ValueOf(destMask).UnsafePointer()), 0, 0)
 		if errNo != 0 {
 			errList = append(errList, fmt.Errorf("pod: %s, container: %s, pid: %d, migrates pages from %s to %s failed with error: %v",
-				podUID, containerId, containerPid, sourceNUMAs.String(), destNUMAs.String(), errNo.Error()))
+				pod.Name, containerId, containerPid, sourceNUMAs.String(), destNUMAs.String(), errNo.Error()))
 		}
 		logs = append(logs, eventbus.SyscallLog{
 			Time: start,
@@ -152,14 +153,14 @@ containerLoop:
 		},
 		Cost:        time.Now().Sub(startTime),
 		Syscall:     "SYS_MIGRATE_PAGES",
-		PodUID:      podUID,
+		PodUID:      string(pod.UID),
 		ContainerID: containerId,
 		Logs:        logs,
 	})
 
 	err = utilerrors.NewAggregate(errList)
 	_ = asyncworker.EmitAsyncedMetrics(ctx, metrics.ConvertMapToTags(map[string]string{
-		"podUID":      podUID,
+		"podUID":      string(pod.UID),
 		"containerID": containerId,
 		"succeeded":   fmt.Sprintf("%v", err == nil),
 	})...)
@@ -169,7 +170,7 @@ containerLoop:
 
 // MovePagesForContainer uses SYS_MOVE_PAGES syscall to migrate container process memory from
 // sourceNUMAs to destNUMAs, which has more fine-grained locks than migrate_page.
-func MovePagesForContainer(ctx context.Context, podUID, containerId string,
+func MovePagesForContainer(ctx context.Context, pod *v1.Pod, containerId string,
 	sourceNUMAs, destNUMAs machine.CPUSet,
 ) error {
 	sourceNUMAs = sourceNUMAs.Difference(destNUMAs)
@@ -177,7 +178,7 @@ func MovePagesForContainer(ctx context.Context, podUID, containerId string,
 		return nil
 	}
 
-	memoryAbsCGPath, err := common.GetContainerAbsCgroupPath(common.CgroupSubsysMemory, podUID, containerId)
+	memoryAbsCGPath, err := common.GetContainerAbsCgroupPath(common.CgroupSubsysMemory, pod, containerId)
 	if err != nil {
 		return fmt.Errorf("GetContainerAbsCgroupPath failed with error: %v", err)
 	}
@@ -201,14 +202,14 @@ containerLoop:
 		pid, err := strconv.Atoi(containerPidStr)
 		if err != nil {
 			errList = append(errList, fmt.Errorf("pod: %s, container: %s, pid: %s invalid ",
-				podUID, containerId, containerPidStr))
+				pod.Name, containerId, containerPidStr))
 			continue
 		}
 
 		start := time.Now()
 		if err = MovePagesForProcess(ctx, ProcDir, pid, sourceNUMAs.ToSliceInt(), destNUMAs.ToSliceInt()); err != nil {
 			errList = append(errList, fmt.Errorf("Move pages for pod: %s, container: %s, pid: %d failed: %v ",
-				podUID, containerId, pid, err))
+				pod.Name, containerId, pid, err))
 			continue
 		}
 
@@ -233,14 +234,14 @@ containerLoop:
 		},
 		Cost:        time.Now().Sub(startTime),
 		Syscall:     "SYS_MOVE_PAGES",
-		PodUID:      podUID,
+		PodUID:      string(pod.UID),
 		ContainerID: containerId,
 		Logs:        logs,
 	})
 
 	err = utilerrors.NewAggregate(errList)
 	_ = asyncworker.EmitAsyncedMetrics(ctx, metrics.ConvertMapToTags(map[string]string{
-		"podUID":      podUID,
+		"podUID":      string(pod.UID),
 		"containerID": containerId,
 		"succeeded":   fmt.Sprintf("%v", err == nil),
 	})...)

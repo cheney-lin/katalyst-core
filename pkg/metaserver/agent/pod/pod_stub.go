@@ -59,17 +59,18 @@ func (p *PodFetcherStub) GetPod(_ context.Context, podUID string) (*v1.Pod, erro
 
 func (p *PodFetcherStub) Run(_ context.Context) {}
 
-func (p *PodFetcherStub) GetContainerID(podUID, containerName string) (string, error) {
+func (p *PodFetcherStub) GetPodContainerID(podUID, containerName string) (*v1.Pod, string, error) {
 	p.mutex.Lock()
 	defer p.mutex.Unlock()
 
 	for _, pod := range p.PodList {
 		if string(pod.UID) == podUID {
-			return native.GetContainerID(pod, containerName)
+			id, err := native.GetContainerID(pod, containerName)
+			return pod, id, err
 		}
 	}
 
-	return "", fmt.Errorf("container: %s isn't found in pod: %s status", containerName, podUID)
+	return nil, "", fmt.Errorf("container: %s isn't found in pod: %s status", containerName, podUID)
 }
 
 func (p *PodFetcherStub) GetContainerSpec(podUID, containerName string) (*v1.Container, error) {

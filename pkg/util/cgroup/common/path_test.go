@@ -23,6 +23,9 @@ import (
 	"testing"
 
 	"github.com/stretchr/testify/require"
+	v1 "k8s.io/api/core/v1"
+	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	"k8s.io/apimachinery/pkg/types"
 )
 
 func TestAbsCgroupPathWithSuffix(t *testing.T) {
@@ -66,7 +69,7 @@ func TestGetContainerAbsCgroupPath(t *testing.T) {
 	t.Parallel()
 
 	as := require.New(t)
-	_, err := GetContainerAbsCgroupPath("cpuset", "", "")
+	_, err := GetContainerAbsCgroupPath("cpuset", &v1.Pod{}, "")
 	as.NotNil(err)
 }
 
@@ -74,7 +77,7 @@ func TestIsContainerCgroupExist(t *testing.T) {
 	t.Parallel()
 
 	as := require.New(t)
-	_, err := IsContainerCgroupExist("fake-pod-uid", "fake-container-id")
+	_, err := IsContainerCgroupExist(&v1.Pod{ObjectMeta: metav1.ObjectMeta{UID: types.UID("fake-pod-uid")}}, "fake-container-id")
 	as.NotNil(err)
 }
 
@@ -83,6 +86,6 @@ func TestIsContainerCgroupFileExist(t *testing.T) {
 
 	as := require.New(t)
 	// test the case that file doesn't exist
-	_, err := IsContainerCgroupFileExist("cpuset", "fake-pod-uid", "fake-container-id", "nonexistentfile")
+	_, err := IsContainerCgroupFileExist("cpuset", &v1.Pod{ObjectMeta: metav1.ObjectMeta{UID: types.UID("fake-pod-uid")}}, "fake-container-id", "nonexistentfile")
 	as.NotNil(err)
 }

@@ -24,6 +24,7 @@ import (
 	"fmt"
 
 	"golang.org/x/sys/unix"
+	v1 "k8s.io/api/core/v1"
 	"k8s.io/apimachinery/pkg/util/errors"
 
 	memconsts "github.com/kubewharf/katalyst-core/pkg/agent/qrm-plugins/memory/consts"
@@ -91,12 +92,12 @@ func setHostTCPMem(emitter metrics.MetricEmitter, memTotal uint64, sockMemConfig
 	return nil
 }
 
-func setCg1TCPMem(emitter metrics.MetricEmitter, podUID, containerID string, memLimit, memTCPLimit int64, sockMemConfig *SockMemConfig) error {
+func setCg1TCPMem(emitter metrics.MetricEmitter, pod *v1.Pod, containerID string, memLimit, memTCPLimit int64, sockMemConfig *SockMemConfig) error {
 	newMemTCPLimit := memLimit / 100 * int64(sockMemConfig.cgroupTCPMemRatio)
 	newMemTCPLimit = alignToPageSize(newMemTCPLimit)
 	newMemTCPLimit = int64(general.Clamp(float64(newMemTCPLimit), cgroupTCPMemMin2G, kernSockMemAccountingOn))
 
-	cgroupPath, err := cgroupcm.GetContainerRelativeCgroupPath(podUID, containerID)
+	cgroupPath, err := cgroupcm.GetContainerRelativeCgroupPath(pod, containerID)
 	if err != nil {
 		return err
 	}
@@ -107,7 +108,7 @@ func setCg1TCPMem(emitter metrics.MetricEmitter, podUID, containerID string, mem
 		general.Infof("Apply TCPMemLimitInBytes: %v, old value=%d, new value=%d", cgroupPath, memTCPLimit, newMemTCPLimit)
 		_ = emitter.StoreInt64(metricNameTCPMemoryCgroup, newMemTCPLimit, metrics.MetricTypeNameRaw,
 			metrics.ConvertMapToTags(map[string]string{
-				"podUID":      podUID,
+				"podUID":      string(pod.UID),
 				"containerID": containerID,
 			})...)
 	}
@@ -204,7 +205,7 @@ func SetSockMemLimit(conf *coreconfig.Configuration,
 				continue
 			}
 
-			podUID, containerID := string(pod.UID), native.TrimContainerIDPrefix(containerStatus.ContainerID)
+			containerID := native.TrimContainerIDPrefix(containerStatus.ContainerID)
 			memLimit, err := helper.GetPodMetric(metaServer.MetricsFetcher, emitter, pod, coreconsts.MetricMemLimitContainer, -1)
 			if err != nil {
 				continue
@@ -214,7 +215,7 @@ func SetSockMemLimit(conf *coreconfig.Configuration,
 				continue
 			}
 
-			err = setCg1TCPMem(emitter, podUID, containerID, int64(memLimit), int64(memTCPLimit), &sockMemConfig)
+			err = setCg1TCPMem(emitter, pod, containerID, int64(memLimit), int64(memTCPLimit), &sockMemConfig)
 			if err != nil {
 				errList = append(errList, err)
 			}

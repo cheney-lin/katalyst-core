@@ -30,6 +30,7 @@ import (
 	"github.com/stretchr/testify/assert"
 	v1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	"k8s.io/apimachinery/pkg/types"
 
 	coreconfig "github.com/kubewharf/katalyst-core/pkg/config"
 	"github.com/kubewharf/katalyst-core/pkg/config/agent"
@@ -291,6 +292,7 @@ func TestAlignToPageSize(t *testing.T) {
 func TestSetCg1TCPMem(t *testing.T) {
 	t.Parallel()
 	podUID := "pod12"
+	pod := &v1.Pod{ObjectMeta: metav1.ObjectMeta{UID: types.UID(podUID)}}
 	containerID := "container45"
 	memLimit := int64(1024)
 	memTCPLimit := int64(512)
@@ -299,11 +301,11 @@ func TestSetCg1TCPMem(t *testing.T) {
 		cgroupTCPMemRatio: 100.0,
 	}
 
-	err := setCg1TCPMem(metrics.DummyMetrics{}, podUID, containerID, memLimit, memTCPLimit, &sockMemConfig)
+	err := setCg1TCPMem(metrics.DummyMetrics{}, pod, containerID, memLimit, memTCPLimit, &sockMemConfig)
 	if err == nil {
 		t.Error("Expected an error, but got none")
 	}
-	err = setCg1TCPMem(metrics.DummyMetrics{}, podUID, containerID, 9223372036854771712, memTCPLimit, &sockMemConfig)
+	err = setCg1TCPMem(metrics.DummyMetrics{}, pod, containerID, 9223372036854771712, memTCPLimit, &sockMemConfig)
 	if err == nil {
 		t.Error("Expected an error, but got none")
 	}

@@ -162,7 +162,7 @@ func (m *cgroupIDManagerImpl) getAbsentContainers(podList []*v1.Pod) map[string]
 			containerCache = make(ContainerCache)
 		}
 		for _, container := range pod.Spec.Containers {
-			containerId, err := m.GetContainerID(podUID, container.Name)
+			_, containerId, err := m.GetPodContainerID(podUID, container.Name)
 			if err != nil {
 				klog.Errorf("[cgroupIDManagerImpl.addNewCgroupIDsToCache] get container id failed, pod: %s, container: %s, err: %v",
 					podUID, container.Name, err)
@@ -244,7 +244,12 @@ func (m *cgroupIDManagerImpl) getCgroupIDFromCache(podUID, containerID string) (
 }
 
 func (m *cgroupIDManagerImpl) getCgroupIDFromSystem(podUID, containerID string) (uint64, error) {
-	containerAbsCGPath, err := common.GetContainerAbsCgroupPath("", podUID, containerID)
+	pod, err := m.PodFetcher.GetPod(context.TODO(), podUID)
+	if err != nil {
+		return 0, fmt.Errorf("GetPod failed, err: %v", err)
+	}
+
+	containerAbsCGPath, err := common.GetContainerAbsCgroupPath("", pod, containerID)
 	if err != nil {
 		return 0, fmt.Errorf("GetContainerAbsCgroupPath failed, err: %v", err)
 	}

@@ -124,7 +124,7 @@ func (ei *Impl) containerCgroupPath(pod *v1.Pod, container *v1.Container) (strin
 		return "", err
 	}
 
-	absCgroupPath, err := common.GetContainerAbsCgroupPath(common.CgroupSubsysCPUSet, string(pod.UID), containerID)
+	absCgroupPath, err := common.GetContainerAbsCgroupPath(common.CgroupSubsysCPUSet, pod, containerID)
 	if err != nil {
 		return "", err
 	}

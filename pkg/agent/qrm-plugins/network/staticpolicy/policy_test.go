@@ -1800,9 +1800,11 @@ func TestStaticPolicy_applyNetClass(t *testing.T) {
 		},
 	}
 
-	policy.applyNetClassFunc = policy.metaServer.ExternalManager.ApplyNetClass
+	policy.applyNetClassFunc = func(pod *v1.Pod, containerID string, data *common.NetClsData) error {
+		return policy.metaServer.ExternalManager.ApplyNetClass(string(pod.UID), containerID, data)
+	}
 
-	mockey.Mock(common.IsContainerCgroupExist).To(func(podUID, containerID string) (bool, error) {
+	mockey.Mock(common.IsContainerCgroupExist).To(func(pod *v1.Pod, containerID string) (bool, error) {
 		return true, nil
 	}).Build()
 

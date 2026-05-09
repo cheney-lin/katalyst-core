@@ -195,7 +195,7 @@ func (p *DynamicPolicy) applyExternalCgroupParams(_ *coreconfig.Configuration,
 				continue
 			}
 
-			containerID, err := p.metaServer.GetContainerID(podUID, containerName)
+			pod, containerID, err := p.metaServer.GetPodContainerID(podUID, containerName)
 			if err != nil {
 				general.Warningf("get container id of pod: %s/%s container: %s failed with error: %v",
 					allocationInfo.PodNamespace, allocationInfo.PodName,
@@ -231,7 +231,7 @@ func (p *DynamicPolicy) applyExternalCgroupParams(_ *coreconfig.Configuration,
 					"cgroupSubsysName", entry.CgroupSubsysName,
 					"cgroupIfaceName", cgroupIfaceName)
 
-				exist, err := common.IsContainerCgroupFileExist(entry.CgroupSubsysName, podUID, containerID, cgroupIfaceName)
+				exist, err := common.IsContainerCgroupFileExist(entry.CgroupSubsysName, pod, containerID, cgroupIfaceName)
 				if err != nil {
 					general.Warningf("check %v/%v cgroup file's existence of pod: %s/%s container: %s failed with error: %v",
 						cgroupIfaceName, entry.CgroupSubsysName,
@@ -247,7 +247,7 @@ func (p *DynamicPolicy) applyExternalCgroupParams(_ *coreconfig.Configuration,
 					continue
 				}
 
-				err = cgroupmgr.ApplyUnifiedDataForContainer(podUID, containerID, entry.CgroupSubsysName, cgroupIfaceName, entry.ControlKnobValue)
+				err = cgroupmgr.ApplyUnifiedDataForContainer(pod, containerID, entry.CgroupSubsysName, cgroupIfaceName, entry.ControlKnobValue)
 				if err != nil {
 					errList = append(errList, err)
 					general.ErrorS(err, "ApplyUnifiedDataForContainer failed",
@@ -317,12 +317,12 @@ func (p *DynamicPolicy) checkMemorySet(_ *coreconfig.Configuration,
 				containerID string
 				cpusetStats *common.CPUSetStats
 			)
-			containerID, err := p.metaServer.GetContainerID(podUID, containerName)
+			pod, containerID, err := p.metaServer.GetPodContainerID(podUID, containerName)
 			if err != nil {
 				general.Errorf("get container id of pod: %s container: %s failed with error: %v", podUID, containerName, err)
 				continue
 			}
-			cpusetAbsCGPath, err := common.GetContainerAbsCgroupPath(common.CgroupSubsysCPUSet, podUID, containerID)
+			cpusetAbsCGPath, err := common.GetContainerAbsCgroupPath(common.CgroupSubsysCPUSet, pod, containerID)
 			if err != nil {
 				general.Errorf("get container abs cgroup path of pod: %s container: %s failed with error: %v", podUID, containerName, err)
 				_ = p.emitter.StoreInt64(util.MetricNameCgroupPathNotFound, 1, metrics.MetricTypeNameRaw, tags...)
@@ -564,7 +564,7 @@ func (p *DynamicPolicy) setMemoryMigrate() {
 						p.migrateMemoryLock.Unlock()
 					}()
 
-					containerID, err := p.metaServer.GetContainerID(podUID, containerName)
+					pod, containerID, err := p.metaServer.GetPodContainerID(podUID, containerName)
 					if err != nil {
 						general.Errorf("get container id of pod: %s container: %s failed with error: %v",
 							podUID, containerName, err)
@@ -573,7 +573,7 @@ func (p *DynamicPolicy) setMemoryMigrate() {
 					general.Infof("start to set cgroup memory migrate for pod: %s, container: %s(%s) and pin memory",
 						podUID, containerName, containerID)
 
-					err = cgroupmgr.ApplyCPUSetForContainer(podUID, containerID, cgData)
+					err = cgroupmgr.ApplyCPUSetForContainer(pod, containerID, cgData)
 					general.Infof("end to set cgroup memory migrate for pod: %s, container: %s(%s) and pin memory",
 						podUID, containerName, containerID)
 					if err != nil {
@@ -620,14 +620,14 @@ func (p *DynamicPolicy) clearResidualOOMPriority(conf *coreconfig.Configuration,
 
 		for _, container := range pod.Spec.Containers {
 			containerName := container.Name
-			containerID, err := metaServer.GetContainerID(podUID, containerName)
+			_, containerID, err := metaServer.GetPodContainerID(podUID, containerName)
 			if err != nil {
 				general.Errorf("get container id of pod: %s container: %s failed with error: %v",
 					podUID, containerName, err)
 				continue
 			}
 
-			if exist, err := common.IsContainerCgroupExist(podUID, containerID); err != nil {
+			if exist, err := common.IsContainerCgroupExist(pod, containerID); err != nil {
 				general.Errorf("check if container cgroup exists failed, pod: %s, container: %s(%s), err: %v",
 					podUID, containerName, containerID, err)
 				continue
@@ -738,14 +738,14 @@ func (p *DynamicPolicy) syncOOMPriority(conf *coreconfig.Configuration,
 
 		for _, container := range pod.Spec.Containers {
 			containerName := container.Name
-			containerID, err := metaServer.GetContainerID(podUID, containerName)
+			_, containerID, err := metaServer.GetPodContainerID(podUID, containerName)
 			if err != nil {
 				general.Errorf("get container id failed, pod: %s, container: %s(%s), err: %v",
 					podUID, containerName, containerID, err)
 				continue
 			}
 
-			if exist, err := common.IsContainerCgroupExist(podUID, containerID); err != nil {
+			if exist, err := common.IsContainerCgroupExist(pod, containerID); err != nil {
 				general.Errorf("check if container cgroup exists failed, pod: %s, container: %s(%s), err: %v",
 					podUID, containerName, containerID, err)
 				continue

@@ -163,8 +163,8 @@ func TestGetPodContainerStats(t *testing.T) {
 	assert.NoError(t, err)
 	assert.Equal(t, 0, len(stats))
 
-	relativePathFunc := func(podUID, containerId string) (string, error) {
-		return path.Join(fmt.Sprintf("%s%s", common.PodCgroupPathPrefix, podUID), containerId), nil
+	relativePathFunc := func(pod *v1.Pod, containerId string) (string, error) {
+		return path.Join(fmt.Sprintf("%s%s", common.PodCgroupPathPrefix, string(pod.UID)), containerId), nil
 	}
 	malachiteClient.relativePathFunc = &relativePathFunc
 

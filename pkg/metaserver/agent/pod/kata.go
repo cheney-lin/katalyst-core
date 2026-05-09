@@ -22,14 +22,18 @@ import (
 	"strings"
 	"sync"
 
+	v1 "k8s.io/api/core/v1"
 	"k8s.io/apimachinery/pkg/util/json"
 
 	"github.com/kubewharf/katalyst-core/pkg/util/cgroup/common"
 )
 
 const (
-	kataContainerCgroupPathHandlerName = "kata"
-	kataRuntimeType                    = "io.containerd.kata"
+	runtimeKataQemu = "kata-qemu"
+	runtimeKataClh  = "kata-clh"
+	runtimeKataDuma = "kata-duma"
+
+	kataRuntimeType = "io.containerd.kata"
 )
 
 var registerOnce sync.Once
@@ -44,25 +48,24 @@ func RegisterKataContainerFetcher(runtimePodFetcher RuntimePodFetcher) {
 		runtimePodFetcher: runtimePodFetcher,
 	}
 
-	kataContainerAbsoluteCgroupPathHandler := common.AbsoluteCgroupPathHandler{
-		Name:    kataContainerCgroupPathHandlerName,
-		Handler: kataContainerFetcher.getKataContainerAbsoluteCgroupPath,
-	}
-
-	kataContainerRelativeCgroupPathHandler := common.RelativeCgroupPathHandler{
-		Name:    kataContainerCgroupPathHandlerName,
-		Handler: kataContainerFetcher.getKataContainerRelativeCgroupPath,
-	}
-
 	registerOnce.Do(func() {
-		common.RegisterAbsoluteCgroupPathHandler(kataContainerAbsoluteCgroupPathHandler)
-		common.RegisterRelativeCgroupPathHandler(kataContainerRelativeCgroupPathHandler)
+		common.RegisterAbsoluteCgroupPathHandler(common.AbsoluteCgroupPathHandler{Name: runtimeKataQemu, Handler: kataContainerFetcher.getKataContainerAbsoluteCgroupPath})
+		common.RegisterAbsoluteCgroupPathHandler(common.AbsoluteCgroupPathHandler{Name: runtimeKataClh, Handler: kataContainerFetcher.getKataContainerAbsoluteCgroupPath})
+		common.RegisterAbsoluteCgroupPathHandler(common.AbsoluteCgroupPathHandler{Name: runtimeKataDuma, Handler: kataContainerFetcher.getKataContainerAbsoluteCgroupPath})
+
+		common.RegisterRelativeCgroupPathHandler(common.RelativeCgroupPathHandler{Name: runtimeKataQemu, Handler: kataContainerFetcher.getKataContainerRelativeCgroupPath})
+		common.RegisterRelativeCgroupPathHandler(common.RelativeCgroupPathHandler{Name: runtimeKataClh, Handler: kataContainerFetcher.getKataContainerRelativeCgroupPath})
+		common.RegisterRelativeCgroupPathHandler(common.RelativeCgroupPathHandler{Name: runtimeKataDuma, Handler: kataContainerFetcher.getKataContainerRelativeCgroupPath})
 	})
 }
 
 // getKataContainerAbsoluteCgroupPath attempts to get the absolute cgroup path of a kata container
 // and returns an error if it fails to do so.
-func (k *KataContainerFetcher) getKataContainerAbsoluteCgroupPath(subsys, podUID, containerId string) (string, error) {
+func (k *KataContainerFetcher) getKataContainerAbsoluteCgroupPath(subsys string, pod *v1.Pod, containerId string) (string, error) {
+	if pod == nil {
+		return "", fmt.Errorf("kata container fetcher requires non-nil pod")
+	}
+	podUID := string(pod.UID)
 	// First check if the cgroup exists for pod level
 	_, err := common.GetPodAbsCgroupPath(subsys, podUID)
 	if err != nil {
@@ -77,7 +80,11 @@ func (k *KataContainerFetcher) getKataContainerAbsoluteCgroupPath(subsys, podUID
 
 // getKataContainerRelativeCgroupPath attempts to get the relative cgroup path of a kata container
 // and returns an error if it fails to do so.
-func (k *KataContainerFetcher) getKataContainerRelativeCgroupPath(podUID, containerId string) (string, error) {
+func (k *KataContainerFetcher) getKataContainerRelativeCgroupPath(pod *v1.Pod, containerId string) (string, error) {
+	if pod == nil {
+		return "", fmt.Errorf("kata container fetcher requires non-nil pod")
+	}
+	podUID := string(pod.UID)
 	// First check if the cgroup exists for pod level
 	_, err := common.GetPodRelativeCgroupPath(podUID)
 	if err != nil {

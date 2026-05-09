@@ -67,7 +67,7 @@ func (c *MalachiteClient) GetPodStats(ctx context.Context, podUID string) (map[s
 	containersStats := make(map[string]*types.MalachiteCgroupInfo)
 	for _, containerStatus := range pod.Status.ContainerStatuses {
 		containerID := native.TrimContainerIDPrefix(containerStatus.ContainerID)
-		stats, err := c.GetPodContainerStats(podUID, containerID)
+		stats, err := c.GetPodContainerStats(pod, containerID)
 		if err != nil {
 			general.ErrorS(err, "GetPodContainerStats err", "podUID", podUID, "containerID", containerID, "podName", pod.Name)
 			_ = c.emitter.StoreInt64(metricMalachiteContainerStatsMissing, 1, metrics.MetricTypeNameCount,
@@ -82,15 +82,16 @@ func (c *MalachiteClient) GetPodStats(ctx context.Context, podUID string) (map[s
 	return containersStats, nil
 }
 
-func (c *MalachiteClient) GetPodContainerStats(podUID, containerID string) (*types.MalachiteCgroupInfo, error) {
+func (c *MalachiteClient) GetPodContainerStats(pod *v1.Pod, containerID string) (*types.MalachiteCgroupInfo, error) {
 	var cgroupPath string
 	var err error
 
+	podUID := string(pod.UID)
 	// if relativePathFunc has been set, we should use it
 	if c.relativePathFunc != nil {
-		cgroupPath, err = (*c.relativePathFunc)(podUID, containerID)
+		cgroupPath, err = (*c.relativePathFunc)(pod, containerID)
 	} else {
-		cgroupPath, err = cgroupcm.GetContainerRelativeCgroupPath(podUID, containerID)
+		cgroupPath, err = cgroupcm.GetContainerRelativeCgroupPath(pod, containerID)
 	}
 	if err != nil {
 		return nil, fmt.Errorf("GetPodContainerStats %s/%v get-relative-path err %v", podUID, containerID, err)

@@ -93,7 +93,7 @@ type StaticPolicy struct {
 
 	CgroupV2Env                                     bool
 	qosLevelToNetClassMap                           map[string]uint32
-	applyNetClassFunc                               func(podUID, containerID string, data *common.NetClsData) error
+	applyNetClassFunc                               func(pod *v1.Pod, containerID string, data *common.NetClsData) error
 	applyNetworkGroupsFunc                          func(map[string]*qrmgeneral.NetworkGroup) error
 	podLevelNetClassAnnoKey                         string
 	podLevelNetAttributesAnnoKeys                   []string
@@ -164,7 +164,9 @@ func NewStaticPolicy(agentCtx *agent.GenericContext, conf *config.Configuration,
 
 	if common.CheckCgroup2UnifiedMode() {
 		policyImplement.CgroupV2Env = true
-		policyImplement.applyNetClassFunc = agentCtx.MetaServer.ExternalManager.ApplyNetClass
+		policyImplement.applyNetClassFunc = func(pod *v1.Pod, containerID string, data *common.NetClsData) error {
+			return agentCtx.MetaServer.ExternalManager.ApplyNetClass(string(pod.UID), containerID, data)
+		}
 	} else {
 		policyImplement.CgroupV2Env = false
 		policyImplement.applyNetClassFunc = cgroupcmutils.ApplyNetClsForContainer
@@ -944,14 +946,14 @@ func (p *StaticPolicy) applyNetClass() {
 		for _, container := range pod.Spec.Containers {
 			podUID := string(pod.GetUID())
 			containerName := container.Name
-			containerID, err := p.metaServer.GetContainerID(podUID, containerName)
+			_, containerID, err := p.metaServer.GetPodContainerID(podUID, containerName)
 			if err != nil {
 				general.Errorf("get container id failed, pod: %s, container: %s(%s), err: %v",
 					podUID, containerName, containerID, err)
 				continue
 			}
 
-			if exist, err := common.IsContainerCgroupExist(podUID, containerID); err != nil {
+			if exist, err := common.IsContainerCgroupExist(pod, containerID); err != nil {
 				general.Errorf("check if container cgroup exists failed, pod: %s, container: %s(%s), err: %v",
 					podUID, containerName, containerID, err)
 				continue
@@ -971,16 +973,16 @@ func (p *StaticPolicy) applyNetClass() {
 				activeNetClsData[cgID] = netClsData
 			}
 
-			go func(podUID, containerName string, netClsData *common.NetClsData) {
-				if err = p.applyNetClassFunc(podUID, containerID, netClsData); err != nil {
+			go func(pod *v1.Pod, containerName string, netClsData *common.NetClsData) {
+				if err = p.applyNetClassFunc(pod, containerID, netClsData); err != nil {
 					general.Errorf("apply net class failed, pod: %s, container: %s(%s), netClsData: %+v, err: %v",
-						podUID, containerName, containerID, *netClsData, err)
+						pod.Name, containerName, containerID, *netClsData, err)
 					return
 				}
 
 				general.Infof("apply net class successfully, pod: %s, container: %s(%s), netClsData: %+v",
-					podUID, containerName, containerID, *netClsData)
-			}(string(pod.UID), container.Name, netClsData)
+					pod.Name, containerName, containerID, *netClsData)
+			}(pod, container.Name, netClsData)
 		}
 	}
 

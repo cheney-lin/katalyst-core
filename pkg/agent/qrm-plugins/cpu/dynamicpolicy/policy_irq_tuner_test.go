@@ -63,7 +63,11 @@ func registerRelativeCgroupPathHandler(podUID string) {
 	registerRelativeCgroupPathHandlerOnce.Do(func() {
 		cgroupcommon.RegisterRelativeCgroupPathHandler(cgroupcommon.RelativeCgroupPathHandler{
 			Name: "unit_test",
-			Handler: func(pUID, containerID string) (string, error) {
+			Handler: func(pod *v1.Pod, containerID string) (string, error) {
+				pUID := ""
+				if pod != nil {
+					pUID = string(pod.UID)
+				}
 				if pUID != podUID {
 					return "", fmt.Errorf("pod uid mismatch")
 				}

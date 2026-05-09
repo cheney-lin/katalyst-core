@@ -143,13 +143,13 @@ func (m *managerImpl) updateCPUBurstByPercent(percent float64, pod *v1.Pod, main
 			continue
 		}
 
-		containerID, err := m.metaServer.GetContainerID(podUID, containerName)
+		_, containerID, err := m.metaServer.GetPodContainerID(podUID, containerName)
 		if err != nil {
 			general.Errorf("get container id failed, pod: %s, podName: %s, container: %s(%s), err: %v", podUID, podName, containerName, containerID, err)
 			continue
 		}
 
-		if exist, err := common.IsContainerCgroupExist(podUID, containerID); err != nil {
+		if exist, err := common.IsContainerCgroupExist(pod, containerID); err != nil {
 			general.Errorf("check if container cgroup exists failed, pod: %s, podName: %s, container: %s(%s), err: %v",
 				podUID, podName, containerName, containerID, err)
 			continue
@@ -158,7 +158,7 @@ func (m *managerImpl) updateCPUBurstByPercent(percent float64, pod *v1.Pod, main
 			continue
 		}
 
-		containerAbsoluteCgroupPath, err := common.GetContainerAbsCgroupPath(common.CgroupSubsysCPU, podUID, containerID)
+		containerAbsoluteCgroupPath, err := common.GetContainerAbsCgroupPath(common.CgroupSubsysCPU, pod, containerID)
 		if err != nil {
 			general.Errorf("get container absolute cgroup path failed, pod: %s, podName: %s, container: %s(%s), err: %v", podUID, podName, containerName, containerID, err)
 			errList = append(errList, err)

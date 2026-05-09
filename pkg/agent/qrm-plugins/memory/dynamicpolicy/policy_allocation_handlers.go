@@ -983,7 +983,7 @@ func (p *DynamicPolicy) migratePagesForNUMASetChangedContainers(numaSetChangedCo
 	// drop cache and migrate pages for containers whose numaset changed
 	for podUID, containers := range numaSetChangedContainers {
 		for containerName, allocationInfo := range containers {
-			containerID, err := p.metaServer.GetContainerID(podUID, containerName)
+			pod, containerID, err := p.metaServer.GetPodContainerID(podUID, containerName)
 			if err != nil {
 				general.Errorf("get container id of pod: %s container: %s failed with error: %v", podUID, containerName, err)
 				continue
@@ -1005,7 +1005,7 @@ func (p *DynamicPolicy) migratePagesForNUMASetChangedContainers(numaSetChangedCo
 						UID:  uuid.NewUUID(),
 						Fn:   MovePagesForContainer,
 						Params: []interface{}{
-							podUID, containerID,
+							pod, containerID,
 							p.topology.CPUDetails.NUMANodes(),
 							allocationInfo.NumaAllocationResult.Clone(),
 						},

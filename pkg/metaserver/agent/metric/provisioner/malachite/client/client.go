@@ -21,6 +21,8 @@ import (
 	"sync"
 	"time"
 
+	v1 "k8s.io/api/core/v1"
+
 	"github.com/kubewharf/katalyst-core/pkg/metaserver/agent/pod"
 	"github.com/kubewharf/katalyst-core/pkg/metrics"
 )
@@ -68,7 +70,7 @@ type MalachiteClient struct {
 	// those fields are for testing
 	sync.RWMutex
 	urls             map[string]string
-	relativePathFunc *func(podUID, containerId string) (string, error)
+	relativePathFunc *func(pod *v1.Pod, containerId string) (string, error)
 
 	emitter metrics.MetricEmitter
 	fetcher pod.PodFetcher

@@ -185,8 +185,8 @@ func (f *FakePodFetcher) Run(ctx context.Context) {
 	return
 }
 
-func (f *FakePodFetcher) GetContainerID(podUID, containerName string) (string, error) {
-	return "", nil
+func (f *FakePodFetcher) GetPodContainerID(podUID, containerName string) (*v1.Pod, string, error) {
+	return nil, "", nil
 }
 
 func (f *FakePodFetcher) GetContainerSpec(podUID, containerName string) (*v1.Container, error) {

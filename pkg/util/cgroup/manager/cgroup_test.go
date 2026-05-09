@@ -33,6 +33,9 @@ import (
 	"github.com/bytedance/mockey"
 	"github.com/opencontainers/runc/libcontainer/cgroups"
 	"github.com/stretchr/testify/assert"
+	corev1 "k8s.io/api/core/v1"
+	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	"k8s.io/apimachinery/pkg/types"
 
 	"github.com/kubewharf/katalyst-core/pkg/metrics"
 	"github.com/kubewharf/katalyst-core/pkg/util/cgroup/common"
@@ -91,9 +94,9 @@ func testManager(t *testing.T, version string) {
 	assert.NoError(t, err)
 	err = ApplyCPUSetWithAbsolutePath("/test", &common.CPUSetData{})
 	assert.NoError(t, err)
-	err = ApplyCPUSetForContainer("fake-pod", "fake-container", &common.CPUSetData{})
+	err = ApplyCPUSetForContainer(&corev1.Pod{ObjectMeta: metav1.ObjectMeta{UID: types.UID("fake-pod")}}, "fake-container", &common.CPUSetData{})
 	assert.NotNil(t, err)
-	err = ApplyUnifiedDataForContainer("fake-pod", "fake-container", common.CgroupSubsysMemory, "memory.high", "max")
+	err = ApplyUnifiedDataForContainer(&corev1.Pod{ObjectMeta: metav1.ObjectMeta{UID: types.UID("fake-pod")}}, "fake-container", common.CgroupSubsysMemory, "memory.high", "max")
 	assert.NotNil(t, err)
 
 	_, _ = GetMemoryWithRelativePath("/")
@@ -107,7 +110,7 @@ func testManager(t *testing.T, version string) {
 	_, _ = GetTasksWithRelativePath("/", "cpu")
 	_, _ = GetTasksWithAbsolutePath("/")
 
-	_ = DropCacheWithTimeoutForContainer(context.Background(), "fake-pod", "fake-container", 1, 0)
+	_ = DropCacheWithTimeoutForContainer(context.Background(), &corev1.Pod{ObjectMeta: metav1.ObjectMeta{UID: types.UID("fake-pod")}}, "fake-container", 1, 0)
 	_ = DropCacheWithTimeoutAndAbsCGPath(1, "/test", 0)
 }
 
@@ -118,7 +121,7 @@ func testNetCls(t *testing.T, version string) {
 	err = ApplyNetClsWithRelativePath("/test", &common.NetClsData{})
 	assert.NoError(t, err)
 
-	err = ApplyNetClsForContainer("fake-pod", "fake-container", &common.NetClsData{})
+	err = ApplyNetClsForContainer(&corev1.Pod{ObjectMeta: metav1.ObjectMeta{UID: types.UID("fake-pod")}}, "fake-container", &common.NetClsData{})
 	assert.Error(t, err)
 }
 

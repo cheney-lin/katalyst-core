@@ -25,15 +25,26 @@ import (
 	"strings"
 	"sync"
 
+	v1 "k8s.io/api/core/v1"
 	utilerrors "k8s.io/apimachinery/pkg/util/errors"
 	"k8s.io/apimachinery/pkg/util/sets"
 
 	"github.com/kubewharf/katalyst-core/pkg/util/general"
 )
 
+// podUIDOf returns the pod UID string from the given pod.
+// It tolerates a nil pod and returns an empty string in that case so that
+// downstream cgroup path lookups can fail gracefully with a clear error.
+func podUIDOf(pod *v1.Pod) string {
+	if pod == nil {
+		return ""
+	}
+	return string(pod.UID)
+}
+
 const (
 	numaBindingReclaimRelativeRootCgroupPathSeparator = "-"
-	defaultCgroupPathHandlerName                      = "default"
+	runtimeDefault                                    = "default"
 )
 
 // k8sCgroupPathList is used to record cgroup-path related configurations,
@@ -54,14 +65,14 @@ var (
 	// Ensure that we always go through the default handler first to get cgroup path
 	absoluteCgroupPathHandlerList = []AbsoluteCgroupPathHandler{
 		{
-			Name:    defaultCgroupPathHandlerName,
+			Name:    runtimeDefault,
 			Handler: getContainerDefaultAbsCgroupPath,
 		},
 	}
 	relativeCgroupPathHandlerLock sync.Mutex
 	relativeCgroupPathHandlerList = []RelativeCgroupPathHandler{
 		{
-			Name:    defaultCgroupPathHandlerName,
+			Name:    runtimeDefault,
 			Handler: getContainerDefaultRelativeAbsCgroupPath,
 		},
 	}
@@ -71,6 +82,28 @@ func RegisterAbsoluteCgroupPathHandler(handler AbsoluteCgroupPathHandler) {
 	absoluteCgroupPathHandlerLock.Lock()
 	defer absoluteCgroupPathHandlerLock.Unlock()
 	absoluteCgroupPathHandlerList = append(absoluteCgroupPathHandlerList, handler)
+}
+
+func GetAbsoluteCgroupPathHandler(runtimeClass string) *AbsoluteCgroupPathHandler {
+	absoluteCgroupPathHandlerLock.Lock()
+	defer absoluteCgroupPathHandlerLock.Unlock()
+	for _, handler := range absoluteCgroupPathHandlerList {
+		if handler.Name == runtimeClass {
+			return &handler
+		}
+	}
+	return nil
+}
+
+func GetRelativeCgroupPathHandler(runtimeClass string) *RelativeCgroupPathHandler {
+	relativeCgroupPathHandlerLock.Lock()
+	defer relativeCgroupPathHandlerLock.Unlock()
+	for _, handler := range relativeCgroupPathHandlerList {
+		if handler.Name == runtimeClass {
+			return &handler
+		}
+	}
+	return nil
 }
 
 func RegisterRelativeCgroupPathHandler(handler RelativeCgroupPathHandler) {
@@ -184,52 +217,48 @@ func GetPodRelativeCgroupPath(podUID string) (string, error) {
 	return GetKubernetesAnyExistRelativeCgroupPath(fmt.Sprintf("%s%s", PodCgroupPathPrefix, podUID))
 }
 
-func getContainerDefaultAbsCgroupPath(subsys, podUID, containerId string) (string, error) {
-	return GetKubernetesAnyExistAbsCgroupPath(subsys, path.Join(fmt.Sprintf("%s%s", PodCgroupPathPrefix, podUID), containerId))
+func getContainerDefaultAbsCgroupPath(subsys string, pod *v1.Pod, containerId string) (string, error) {
+	return GetKubernetesAnyExistAbsCgroupPath(subsys, path.Join(fmt.Sprintf("%s%s", PodCgroupPathPrefix, podUIDOf(pod)), containerId))
 }
 
-func getContainerDefaultRelativeAbsCgroupPath(podUID, containerId string) (string, error) {
-	return GetKubernetesAnyExistRelativeCgroupPath(path.Join(fmt.Sprintf("%s%s", PodCgroupPathPrefix, podUID), containerId))
+func getContainerDefaultRelativeAbsCgroupPath(pod *v1.Pod, containerId string) (string, error) {
+	return GetKubernetesAnyExistRelativeCgroupPath(path.Join(fmt.Sprintf("%s%s", PodCgroupPathPrefix, podUIDOf(pod)), containerId))
 }
 
 // GetContainerAbsCgroupPath returns absolute cgroup path for container level
 // It uses all the handlers in absoluteCgroupPathHandlerMap and returns the first non-empty path.
-func GetContainerAbsCgroupPath(subsys, podUID, containerId string) (string, error) {
-	var errors []error
-	for _, handler := range absoluteCgroupPathHandlerList {
-		if handler.Handler == nil {
-			errors = append(errors, fmt.Errorf("absolute cgroup path Handler for %s is nil", handler.Name))
-			continue
-		}
-		cgroupPath, err := handler.Handler(subsys, podUID, containerId)
-		if err == nil {
-			return cgroupPath, nil
-		}
-		errors = append(errors, fmt.Errorf("get absolute cgroup path by Handler %s failed, err: %v", handler.Name, err))
+func GetContainerAbsCgroupPath(subsys string, pod *v1.Pod, containerId string) (string, error) {
+	runtimeClass := runtimeDefault
+	if pod.Spec.RuntimeClassName != nil {
+		runtimeClass = *pod.Spec.RuntimeClassName
 	}
-	return "", utilerrors.NewAggregate(errors)
+
+	handler := GetAbsoluteCgroupPathHandler(runtimeClass)
+	if handler == nil {
+		return "", fmt.Errorf("failed to find absolute path of runtime-class %s", runtimeClass)
+	}
+
+	return handler.Handler(subsys, pod, containerId)
 }
 
 // GetContainerRelativeCgroupPath returns relative cgroup path for container level
 // It uses all the handlers in relativeCgroupPathHandlerMap and returns the first non-empty path.
-func GetContainerRelativeCgroupPath(podUID, containerId string) (string, error) {
-	var errors []error
-	for _, handler := range relativeCgroupPathHandlerList {
-		if handler.Handler == nil {
-			errors = append(errors, fmt.Errorf("relative cgroup path Handler for %s is nil", handler.Name))
-			continue
-		}
-		cgroupPath, err := handler.Handler(podUID, containerId)
-		if err == nil {
-			return cgroupPath, nil
-		}
-		errors = append(errors, fmt.Errorf("get relative cgroup path by Handler %s failed, err: %v", handler.Name, err))
+func GetContainerRelativeCgroupPath(pod *v1.Pod, containerId string) (string, error) {
+	runtimeClass := runtimeDefault
+	if pod.Spec.RuntimeClassName != nil {
+		runtimeClass = *pod.Spec.RuntimeClassName
 	}
-	return "", utilerrors.NewAggregate(errors)
+
+	handler := GetRelativeCgroupPathHandler(runtimeClass)
+	if handler == nil {
+		return "", fmt.Errorf("failed to find relative path of runtime-class %s", runtimeClass)
+	}
+
+	return handler.Handler(pod, containerId)
 }
 
-func IsContainerCgroupExist(podUID, containerID string) (bool, error) {
-	containerAbsCGPath, err := GetContainerAbsCgroupPath("", podUID, containerID)
+func IsContainerCgroupExist(pod *v1.Pod, containerID string) (bool, error) {
+	containerAbsCGPath, err := GetContainerAbsCgroupPath("", pod, containerID)
 	if err != nil {
 		return false, fmt.Errorf("GetContainerAbsCgroupPath failed, err: %v", err)
 	}
@@ -237,8 +266,8 @@ func IsContainerCgroupExist(podUID, containerID string) (bool, error) {
 	return general.IsPathExists(containerAbsCGPath), nil
 }
 
-func IsContainerCgroupFileExist(subsys, podUID, containerId, cgroupFileName string) (bool, error) {
-	absCgroupPath, err := GetContainerAbsCgroupPath(subsys, podUID, containerId)
+func IsContainerCgroupFileExist(subsys string, pod *v1.Pod, containerId, cgroupFileName string) (bool, error) {
+	absCgroupPath, err := GetContainerAbsCgroupPath(subsys, pod, containerId)
 	if err != nil {
 		return false, fmt.Errorf("GetContainerAbsCgroupPath failed with error: %v", err)
 	}

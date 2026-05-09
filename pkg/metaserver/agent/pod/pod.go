@@ -64,8 +64,8 @@ type PodFetcher interface {
 	// Run starts the preparing logic to collect pod metadata.
 	Run(ctx context.Context)
 
-	// GetContainerID & GetContainerSpec are used to parse running container info
-	GetContainerID(podUID, containerName string) (string, error)
+	// GetPodContainerID & GetContainerSpec are used to parse running container info
+	GetPodContainerID(podUID, containerName string) (*v1.Pod, string, error)
 	GetContainerSpec(podUID, containerName string) (*v1.Container, error)
 	// GetPod returns Pod by UID
 	GetPod(ctx context.Context, podUID string) (*v1.Pod, error)
@@ -136,22 +136,23 @@ func (w *podFetcherImpl) GetContainerSpec(podUID, containerName string) (*v1.Con
 	return nil, fmt.Errorf("container: %s isn't found in pod: %s spec", containerName, podUID)
 }
 
-func (w *podFetcherImpl) GetContainerID(podUID, containerName string) (string, error) {
+func (w *podFetcherImpl) GetPodContainerID(podUID, containerName string) (*v1.Pod, string, error) {
 	if w == nil {
-		return "", fmt.Errorf("get container id from nil pod fetcher")
+		return nil, "", fmt.Errorf("get container id from nil pod fetcher")
 	}
 
 	kubeletPodsCache, err := w.getKubeletPodsCache(context.Background())
 	if err != nil {
-		return "", fmt.Errorf("getKubeletPodsCache failed with error: %v", err)
+		return nil, "", fmt.Errorf("getKubeletPodsCache failed with error: %v", err)
 	}
 
 	pod := kubeletPodsCache[podUID]
 	if pod == nil {
-		return "", fmt.Errorf("pod of uid: %s isn't found", podUID)
+		return nil, "", fmt.Errorf("pod of uid: %s isn't found", podUID)
 	}
 
-	return native.GetContainerID(pod, containerName)
+	id, err := native.GetContainerID(pod, containerName)
+	return pod.DeepCopy(), id, err
 }
 
 func (w *podFetcherImpl) Run(ctx context.Context) {

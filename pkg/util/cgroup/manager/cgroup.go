@@ -28,6 +28,8 @@ import (
 	"strconv"
 	"time"
 
+	v1 "k8s.io/api/core/v1"
+
 	"github.com/kubewharf/katalyst-core/pkg/agent/qrm-plugins/util"
 	"github.com/kubewharf/katalyst-core/pkg/consts"
 	"github.com/kubewharf/katalyst-core/pkg/metrics"
@@ -94,12 +96,12 @@ func ApplyCPUSetWithAbsolutePath(absCgroupPath string, data *common.CPUSetData) 
 	return GetManager().ApplyCPUSet(absCgroupPath, data)
 }
 
-func ApplyCPUSetForContainer(podUID, containerId string, data *common.CPUSetData) error {
+func ApplyCPUSetForContainer(pod *v1.Pod, containerId string, data *common.CPUSetData) error {
 	if data == nil {
 		return fmt.Errorf("ApplyCPUSetForContainer with nil cgroup data")
 	}
 
-	cpusetAbsCGPath, err := common.GetContainerAbsCgroupPath(common.CgroupSubsysCPUSet, podUID, containerId)
+	cpusetAbsCGPath, err := common.GetContainerAbsCgroupPath(common.CgroupSubsysCPUSet, pod, containerId)
 	if err != nil {
 		return fmt.Errorf("GetContainerAbsCgroupPath failed with error: %v", err)
 	}
@@ -125,12 +127,12 @@ func ApplyNetClsWithAbsolutePath(absCgroupPath string, data *common.NetClsData) 
 }
 
 // ApplyNetClsForContainer applies the net_cls config for a container.
-func ApplyNetClsForContainer(podUID, containerId string, data *common.NetClsData) error {
+func ApplyNetClsForContainer(pod *v1.Pod, containerId string, data *common.NetClsData) error {
 	if data == nil {
 		return fmt.Errorf("ApplyNetClass with nil cgroup data")
 	}
 
-	netClsAbsCGPath, err := common.GetContainerAbsCgroupPath(common.CgroupSubsysNetCls, podUID, containerId)
+	netClsAbsCGPath, err := common.GetContainerAbsCgroupPath(common.CgroupSubsysNetCls, pod, containerId)
 	if err != nil {
 		return fmt.Errorf("GetContainerAbsCgroupPath failed with error: %v", err)
 	}
@@ -186,8 +188,8 @@ func ApplyUnifiedDataWithAbsolutePath(absCgroupPath, cgroupFileName, data string
 }
 
 // ApplyUnifiedDataForContainer applies the data to cgroupFileName in subsys for a container.
-func ApplyUnifiedDataForContainer(podUID, containerId, subsys, cgroupFileName, data string) error {
-	absCgroupPath, err := common.GetContainerAbsCgroupPath(subsys, podUID, containerId)
+func ApplyUnifiedDataForContainer(pod *v1.Pod, containerId, subsys, cgroupFileName, data string) error {
+	absCgroupPath, err := common.GetContainerAbsCgroupPath(subsys, pod, containerId)
 	if err != nil {
 		return fmt.Errorf("GetContainerAbsCgroupPath failed with error: %v", err)
 	}
@@ -303,8 +305,8 @@ func GetTasksWithAbsolutePath(absCgroupPath string) ([]string, error) {
 	return GetManager().GetTasks(absCgroupPath)
 }
 
-func GetCPUSetForContainer(podUID, containerId string) (*common.CPUSetStats, error) {
-	cpusetAbsCGPath, err := common.GetContainerAbsCgroupPath(common.CgroupSubsysCPUSet, podUID, containerId)
+func GetCPUSetForContainer(pod *v1.Pod, containerId string) (*common.CPUSetStats, error) {
+	cpusetAbsCGPath, err := common.GetContainerAbsCgroupPath(common.CgroupSubsysCPUSet, pod, containerId)
 	if err != nil {
 		return nil, fmt.Errorf("GetContainerAbsCgroupPath failed with error: %v", err)
 	}
@@ -312,15 +314,15 @@ func GetCPUSetForContainer(podUID, containerId string) (*common.CPUSetStats, err
 	return GetCPUSetWithAbsolutePath(cpusetAbsCGPath)
 }
 
-func DropCacheWithTimeoutForContainer(ctx context.Context, podUID, containerId string, timeoutSecs int, nbytes int64) error {
-	memoryAbsCGPath, err := common.GetContainerAbsCgroupPath(common.CgroupSubsysMemory, podUID, containerId)
+func DropCacheWithTimeoutForContainer(ctx context.Context, pod *v1.Pod, containerId string, timeoutSecs int, nbytes int64) error {
+	memoryAbsCGPath, err := common.GetContainerAbsCgroupPath(common.CgroupSubsysMemory, pod, containerId)
 	if err != nil {
 		return fmt.Errorf("GetContainerAbsCgroupPath failed with error: %v", err)
 	}
 
 	err = DropCacheWithTimeoutAndAbsCGPath(timeoutSecs, memoryAbsCGPath, nbytes)
 	_ = asyncworker.EmitAsyncedMetrics(ctx, metrics.ConvertMapToTags(map[string]string{
-		"podUID":      podUID,
+		"podUID":      string(pod.UID),
 		"containerID": containerId,
 		"succeeded":   fmt.Sprintf("%v", err == nil),
 	})...)

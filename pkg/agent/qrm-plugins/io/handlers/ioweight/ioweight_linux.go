@@ -136,7 +136,7 @@ func applyIOWeightQoSLevelConfig(conf *coreconfig.Configuration,
 		// setup contaienr level.
 		for _, containerStatus := range pod.Status.ContainerStatuses {
 			podUID, containerID := string(pod.UID), native.TrimContainerIDPrefix(containerStatus.ContainerID)
-			err := cgroupmgr.ApplyUnifiedDataForContainer(podUID, containerID, extraControlKnobConfigs[controlKnobKeyIOWeight].CgroupSubsysName, cgroupIOWeightName, qosLevelDefaultValue)
+			err := cgroupmgr.ApplyUnifiedDataForContainer(pod, containerID, extraControlKnobConfigs[controlKnobKeyIOWeight].CgroupSubsysName, cgroupIOWeightName, qosLevelDefaultValue)
 			if err != nil {
 				general.Warningf("ApplyUnifiedDataForContainer failed:%v", err)
 				continue
